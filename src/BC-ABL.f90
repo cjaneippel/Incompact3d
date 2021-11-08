@@ -271,7 +271,7 @@ contains
     integer :: nxc, nyc, nzc, xsize1, xsize2, xsize3
     real(mytype) :: delta
     real(mytype) :: ux_HAve_local, uz_HAve_local, Phi_HAve_local
-    real(mytype) :: ux_HAve, uz_HAve,S_HAve,Phi_HAve,ux12,uz12,S12,Phi12,Tstat12
+    real(mytype) :: ux_HAve, uz_HAve, S_HAve, Phi_HAve, ux_delta, uz_delta, S_delta, Phi_delta, Tstat_delta
     real(mytype) :: PsiM_HAve_local, PsiM_HAve, PsiH_HAve_local, PsiH_HAve
     real(mytype) :: L_HAve_local, L_HAve, Q_HAve_local, Q_HAve, zL, zeta_HAve
     real(mytype) :: Lold, OL_diff
@@ -337,23 +337,41 @@ contains
     uz_HAve_local  = zero
     Phi_HAve_local = zero
 
-    ! dy to y=1/2
-    if (istret/=0) delta=half*(yp(2)-yp(1))
-    if (istret==0) delta=half*dy
-
-    ! Find horizontally averaged velocities at j=1.5
-    if (xstart(2)==1) then
-      do k=1,xsize(3)
-        do i=1,xsize(1)
-           ux_HAve_local=ux_HAve_local+half*(uxf1(i,1,k)+uxf1(i,2,k))
-           uz_HAve_local=uz_HAve_local+half*(uzf1(i,1,k)+uzf1(i,2,k))
-           if (iscalar==1) Phi_HAve_local=Phi_HAve_local+half*(phif1(i,1,k)+phif1(i,2,k))
-        enddo
-      enddo
-      ux_HAve_local=ux_HAve_local
-      uz_HAve_local=uz_HAve_local
-      Phi_HAve_local=Phi_HAve_local
+    ! Free-slip bc, dy to y=1/2
+    if (ncly1==1) then
+      if (istret/=0) delta=half*(yp(2)-yp(1))
+      if (istret==0) delta=half*dy
+    ! No-slip bc, dy to y=1
+    else if (ncly1==2) then
+      if (istret/=0) delta=yp(2)-yp(1)
+      if (istret==0) delta=dy
     endif
+
+    ! Find horizontally averaged velocities at delta
+    if (xstart(2)==1) then
+      ! Free-slip bc, j=1.5
+      if (ncly1==1) then
+        do k=1,xsize(3)
+          do i=1,xsize(1)
+             ux_HAve_local=ux_HAve_local+half*(uxf1(i,1,k)+uxf1(i,2,k))
+             uz_HAve_local=uz_HAve_local+half*(uzf1(i,1,k)+uzf1(i,2,k))
+             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+half*(phif1(i,1,k)+phif1(i,2,k))
+          enddo
+        enddo
+      ! No-slip bc, j=2
+      else if (ncly1==2) then
+        do k=1,xsize(3)
+          do i=1,xsize(1)
+             ux_HAve_local=ux_HAve_local+uxf1(i,2,k)
+             uz_HAve_local=uz_HAve_local+uzf1(i,2,k)
+             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+phif1(i,2,k)
+          enddo
+        enddo
+      endif
+    endif
+    ux_HAve_local=ux_HAve_local
+    uz_HAve_local=uz_HAve_local
+    Phi_HAve_local=Phi_HAve_local
 
     call MPI_ALLREDUCE(ux_HAve_local,ux_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
     call MPI_ALLREDUCE(uz_HAve_local,uz_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
@@ -365,11 +383,11 @@ contains
     if (iscalar==1) then 
       Phi_HAve=Phi_HAve/(nxc*nzc)
       if (ibuoyancy==1) then 
-        Tstat12 =T_wall + (T_top-T_wall)*delta/yly
+        Tstat_delta =T_wall + (T_top-T_wall)*delta/yly
       else 
-        Tstat12 =zero
+        Tstat_delta =zero
       endif
-      Phi_HAve=Phi_HAve + Tstat12
+      Phi_HAve=Phi_HAve + Tstat_delta
     endif
 
     ! Reset wall flux values
@@ -428,34 +446,68 @@ contains
            tauwallzy(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM_HAve))**two*uz_HAve*S_HAve
          ! Local formulation
          else
-           ux12=half*(uxf1(i,1,k)+uxf1(i,2,k))
-           uz12=half*(uzf1(i,1,k)+uzf1(i,2,k))
-           S12=sqrt_prec(ux12**2.+uz12**2.)
-           if (iscalar==1) then
-             Phi12= half*(phif1(i,1,k)+ phif1(i,2,k)) + Tstat12
-             do ii=1,10
-                if (itherm==1) heatflux(i,k)=-k_roughness**two*S12*(Phi12-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
-                Obukhov(i,k)=-(k_roughness*S12/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi12/(k_roughness*gravv*heatflux(i,k))
-                if (istrat==0) then
-                  PsiM(i,k)=-4.8_mytype*delta/Obukhov(i,k)
-                  PsiH(i,k)=-7.8_mytype*delta/Obukhov(i,k)
-                else if (istrat==1) then
-                  zeta(i,k)=(one-sixteen*delta/Obukhov(i,k))**zptwofive
-                  PsiM(i,k)=two*log_prec(half*(one+zeta(i,k)))+log_prec(zpfive*(one+zeta(i,k)**2.))-two*atan_prec(zeta(i,k))+pi/two
-                  PsiH(i,k)=two*log_prec(half*(one+zeta(i,k)**two))
-                endif
-             enddo
+           ! Free-slip bc
+           if (ncly1==1) then
+             ux_delta=half*(uxf1(i,1,k)+uxf1(i,2,k))
+             uz_delta=half*(uzf1(i,1,k)+uzf1(i,2,k))
+             S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
+             if (iscalar==1) then
+               Phi_delta= half*(phif1(i,1,k)+ phif1(i,2,k)) + Tstat_delta
+               do ii=1,10
+                  if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
+                  Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
+                  if (istrat==0) then
+                    PsiM(i,k)=-4.8_mytype*delta/Obukhov(i,k)
+                    PsiH(i,k)=-7.8_mytype*delta/Obukhov(i,k)
+                  else if (istrat==1) then
+                    zeta(i,k)=(one-sixteen*delta/Obukhov(i,k))**zptwofive
+                    PsiM(i,k)=two*log_prec(half*(one+zeta(i,k)))+log_prec(zpfive*(one+zeta(i,k)**2.))-two*atan_prec(zeta(i,k))+pi/two
+                    PsiH(i,k)=two*log_prec(half*(one+zeta(i,k)**two))
+                  endif
+               enddo
+             endif
+           ! No-slip bc
+           else if (ncly1==2) then
+             ux_delta=uxf1(i,2,k)
+             uz_delta=uzf1(i,2,k)
+             S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
+             if (iscalar==1) then
+               Phi_delta= phif1(i,2,k) + Tstat_delta
+               do ii=1,10
+                  if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
+                  Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
+                  if (istrat==0) then
+                    PsiM(i,k)=-4.8_mytype*delta/Obukhov(i,k)
+                    PsiH(i,k)=-7.8_mytype*delta/Obukhov(i,k)
+                  else if (istrat==1) then
+                    zeta(i,k)=(one-sixteen*delta/Obukhov(i,k))**zptwofive
+                    PsiM(i,k)=two*log_prec(half*(one+zeta(i,k)))+log_prec(zpfive*(one+zeta(i,k)**2.))-two*atan_prec(zeta(i,k))+pi/two
+                    PsiH(i,k)=two*log_prec(half*(one+zeta(i,k)**two))
+                  endif
+               enddo
+             endif
            endif
-           tauwallxy(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*ux12*S12
-           tauwallzy(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*uz12*S12
+
+           tauwallxy(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*ux_delta*S_delta
+           tauwallzy(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*uz_delta*S_delta
          endif
          ! Apply second-order upwind scheme for the near wall
          ! Below should change for non-uniform grids, same for wall_sgs_scalar
-         wallfluxx(i,1,k) = -(-half*(-two*nut1(i,3,k)*sxy1(i,3,k))+&
-                            two*(-two*nut1(i,2,k)*sxy1(i,2,k))-three/two*tauwallxy(i,k))/(two*delta)
-         wallfluxy(i,1,k) = zero
-         wallfluxz(i,1,k) = -(-half*(-two*nut1(i,3,k)*syz1(i,3,k))+&
-                            two*(-two*nut1(i,2,k)*syz1(i,2,k))-three/two*tauwallzy(i,k))/(two*delta)
+         ! Free-slip bc
+         if (ncly1==1) then
+           wallfluxx(i,1,k) = -(-half*(-two*nut1(i,3,k)*sxy1(i,3,k))+&
+                              two*(-two*nut1(i,2,k)*sxy1(i,2,k))-three/two*tauwallxy(i,k))/(two*delta)
+           wallfluxy(i,1,k) = zero
+           wallfluxz(i,1,k) = -(-half*(-two*nut1(i,3,k)*syz1(i,3,k))+&
+                              two*(-two*nut1(i,2,k)*syz1(i,2,k))-three/two*tauwallzy(i,k))/(two*delta)
+         ! No-slip bc
+         else if (ncly1==2) then
+           wallfluxx(i,2,k) = -(-half*(-two*nut1(i,4,k)*sxy1(i,4,k))+&
+                              two*(-two*nut1(i,3,k)*sxy1(i,3,k))-three/two*tauwallxy(i,k))/(two*delta)
+           wallfluxy(i,2,k) = zero
+           wallfluxz(i,2,k) = -(-half*(-two*nut1(i,4,k)*syz1(i,4,k))+&
+                              two*(-two*nut1(i,3,k)*syz1(i,3,k))-three/two*tauwallzy(i,k))/(two*delta)
+         endif
       enddo
       enddo
     endif
@@ -500,7 +552,7 @@ contains
     if (mod(itime,ilist)==0.and.nrank==0) then
          write(*,*)  ' '
          write(*,*)  ' ABL:'
-         write(*,*)  ' Horizontally-averaged velocity at y=1/2: ', ux_HAve,uz_Have
+         write(*,*)  ' Horizontally-averaged velocity at y=delta: ', ux_HAve,uz_Have
          write(*,*)  ' BL height: ', dBL
          write(*,*)  ' Friction velocity: ', u_shear
     
