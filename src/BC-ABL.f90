@@ -531,10 +531,10 @@ contains
          ! No-slip bc
          else if (ncly1==2) then
            wallfluxx(i,2,k) = -(-half*(-two*nut1(i,4,k)*sxy1(i,4,k))+&
-                              two*(-two*nut1(i,3,k)*sxy1(i,3,k))-three/two*tauwallxy(i,k))/(two*delta)
+                              two*(-two*nut1(i,3,k)*sxy1(i,3,k))-three/two*tauwallxy(i,k))/delta
            wallfluxy(i,2,k) = zero
            wallfluxz(i,2,k) = -(-half*(-two*nut1(i,4,k)*syz1(i,4,k))+&
-                              two*(-two*nut1(i,3,k)*syz1(i,3,k))-three/two*tauwallzy(i,k))/(two*delta)
+                              two*(-two*nut1(i,3,k)*syz1(i,3,k))-three/two*tauwallzy(i,k))/delta
          endif
       enddo
       enddo
