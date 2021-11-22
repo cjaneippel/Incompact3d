@@ -284,9 +284,9 @@ contains
     use param
     use variables
     use var, only: uxf1, uzf1, phif1, uxf3, uzf3, phif3
-    use var, only: di1, di3
+    use var, only: di1, di2, di3
     use var, only: sxy1, syz1, heatflux, ta2, tb2, ta3, tb3
-    use ibm_param, only : ubcx, ubcz
+    use ibm_param, only : ubcx, ubcy, ubcz
     use dbg_schemes, only: log_prec, tanh_prec, sqrt_prec, abs_prec, atan_prec
    
     implicit none
@@ -303,6 +303,12 @@ contains
     real(mytype) :: PsiM_HAve_local, PsiM_HAve, PsiH_HAve_local, PsiH_HAve
     real(mytype) :: L_HAve_local, L_HAve, Q_HAve_local, Q_HAve, zL, zeta_HAve
     real(mytype) :: Lold, OL_diff
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: txy1,tyz1
+    real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallfluxx2,wallfluxz2
+
+    ! Construct Smag SGS stress tensor 
+    txy1 = -2.0*nut1*sxy1
+    tyz1 = -2.0*nut1*syz1
 
     ! Filter the velocity with twice the grid scale according to Bou-Zeid et al. (2005)
 
@@ -521,24 +527,34 @@ contains
          endif
          ! Apply second-order upwind scheme for the near wall
          ! Below should change for non-uniform grids, same for wall_sgs_scalar
-         ! Free-slip bc
+         ! TODO: check where we should be plugging in tauwallxy and tauwallzy. Is it point 1 or 2?
          if (ncly1==1) then
-           wallfluxx(i,1,k) = -(-half*(-two*nut1(i,3,k)*sxy1(i,3,k))+&
-                              two*(-two*nut1(i,2,k)*sxy1(i,2,k))-three/two*tauwallxy(i,k))/(two*delta)
-           wallfluxy(i,1,k) = zero
-           wallfluxz(i,1,k) = -(-half*(-two*nut1(i,3,k)*syz1(i,3,k))+&
-                              two*(-two*nut1(i,2,k)*syz1(i,2,k))-three/two*tauwallzy(i,k))/(two*delta)
-         ! No-slip bc
-         else if (ncly1==2) then
-           wallfluxx(i,2,k) = -(-half*(-two*nut1(i,4,k)*sxy1(i,4,k))+&
-                              two*(-two*nut1(i,3,k)*sxy1(i,3,k))-three/two*tauwallxy(i,k))/delta
-           wallfluxy(i,2,k) = zero
-           wallfluxz(i,2,k) = -(-half*(-two*nut1(i,4,k)*syz1(i,4,k))+&
-                              two*(-two*nut1(i,3,k)*syz1(i,3,k))-three/two*tauwallzy(i,k))/delta
-         endif
+           txy1(i,1,k) = tauwallxy(i,k)
+           tyz1(i,1,k) = tauwallzy(i,k)
+         elseif (ncly1==2) then
+           txy1(i,2,k) = tauwallxy(i,k)
+           tyz1(i,2,k) = tauwallzy(i,k)
+         endif 
       enddo
       enddo
     endif
+
+    ! Derivative of wallmodel-corrected SGS stress tensor
+    ! TODO: we should actually do this for all directions as the local model gives a non-uniform wall stress
+    ! TODO: how about the npaire variable? should it be zero or one?
+    ! TODO: check that we can do stretched meshes
+    ! TODO: when ncly1=1 i was thinking we should be doing this with deryS and nclyS=2
+    call transpose_x_to_y(txy1,txy2)
+    call transpose_x_to_y(tyz1,tyz2)
+    if (ncly1==1) then
+      call dery (wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+      call dery (wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+    elseif (ncly1==2) then
+      call dery (wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+      call dery (wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+    endif
+    call transpose_y_to_x(wallfluxx2,wallfluxx)
+    call transpose_y_to_x(wallfluxz2,wallfluxz)
 
     ! Reset average values
     PsiM_HAve_local=zero
