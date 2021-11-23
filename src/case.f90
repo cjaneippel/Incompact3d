@@ -217,12 +217,12 @@ contains
 
     !call write_snapshot(rho1, ux1, uy1, uz1, pp3, phi1, ep1, itime)
     !call postprocess_case(rho1, ux1, uy1, uz1, pp3, phi1, ep1)
-    !call overall_statistic(ux1, uy1, uz1, phi1, pp3, ep1)
+    !call overall_statistic(ux1, uy1, uz1, phi1, pp3, ep1,txy1)
 
   end subroutine preprocessing
   !##################################################################
   !##################################################################
-  subroutine postprocessing(rho1, ux1, uy1, uz1, pp3, phi1, ep1)
+  subroutine postprocessing(rho1, ux1, uy1, uz1, pp3, phi1, ep1, txy1)
 
     use decomp_2d, only : mytype, xsize, ph1
     use visu, only  : write_snapshot, end_snapshot
@@ -240,6 +240,7 @@ contains
     real(mytype),dimension(xsize(1),xsize(2),xsize(3),nrhotime), intent(in) :: rho1
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)), intent(in) :: ep1
     real(mytype),dimension(ph1%zst(1):ph1%zen(1), ph1%zst(2):ph1%zen(2), nzmsize, npress), intent(in) :: pp3
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)), intent(in) :: txy1
 
     integer :: j
     character(len=32) :: num
@@ -268,7 +269,7 @@ contains
 
     call postprocess_case(rho1, ux1, uy1, uz1, pp3, T, ep1)
 
-    call overall_statistic(ux1, uy1, uz1, T, pp3, ep1)
+    call overall_statistic(ux1, uy1, uz1, T, pp3, ep1, txy1)
 
     if (iturbine.ne.0) then 
       call turbine_output()

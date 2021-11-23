@@ -258,6 +258,7 @@ contains
     use var, only: uxf1, uzf1, phif1, uxf3, uzf3, phif3
     use var, only: di1, di2, di3
     use var, only: sxy1, syz1, heatflux, ta2, tb2, ta3, tb3
+    use var, only: txy1
     use ibm_param, only : ubcx, ubcy, ubcz
     use dbg_schemes, only: log_prec, tanh_prec, sqrt_prec, abs_prec, atan_prec
    
@@ -275,7 +276,7 @@ contains
     real(mytype) :: PsiM_HAve_local, PsiM_HAve, PsiH_HAve_local, PsiH_HAve
     real(mytype) :: L_HAve_local, L_HAve, Q_HAve_local, Q_HAve, zL, zeta_HAve
     real(mytype) :: Lold, OL_diff
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: txy1,tyz1
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: tyz1
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallfluxx2,wallfluxz2
 
     ! Construct Smag SGS stress tensor 

@@ -119,7 +119,7 @@ PROGRAM post
      endif
      if (ipost.ne.0) then
         if (comp_post .eq. 1) then
-           call postprocessing(ux1,uy1,uz1,phi1,ep1)
+           call postprocessing(ux1,uy1,uz1,phi1,ep1,txy1)
         endif
      endif
      call cpu_time(trank)
