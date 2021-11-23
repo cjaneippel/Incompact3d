@@ -52,6 +52,7 @@ module var
   real(mytype), save, allocatable, dimension(:,:,:,:,:) :: dphi1
   real(mytype), save, allocatable, dimension(:,:,:) :: mu1,mu2,mu3
   real(mytype), save, allocatable, dimension(:,:,:) :: uxf1, uxf2, uxf3, uyf1, uyf2, uyf3, uzf1, uzf2, uzf3, phif1, phif2, phif3
+  real(mytype), save, allocatable, dimension(:,:,:) :: txy1
 
   !arrays for post processing
   real(mytype), save, allocatable, dimension(:,:,:) :: f1,fm1
@@ -59,7 +60,7 @@ module var
   real(mytype), save, allocatable, dimension(:,:,:) :: uxm2, uym2, phim2, prem2, dissm2
 
   !arrays for statistic collection
-  real(mytype), save, allocatable, dimension(:,:,:) :: umean,vmean,wmean,pmean,uumean,vvmean,wwmean,uvmean,uwmean,vwmean,tmean
+  real(mytype), save, allocatable, dimension(:,:,:) :: umean,vmean,wmean,pmean,uumean,vvmean,wwmean,uvmean,uwmean,vwmean,tmean,txymean
   real(mytype), save, allocatable, dimension(:,:,:,:) :: phimean,phiphimean,uphimean,vphimean,wphimean
   real(mytype), save, allocatable, dimension(:,:,:) :: tik1,tik2,tak1,tak2
   real(mytype), save, allocatable, dimension(:,:,:) :: u1sum_tik,u1sum_tak
@@ -164,6 +165,8 @@ contains
     diss1 = zero
     call alloc_x(pre1, opt_global=.true.) !global indices
     pre1 = zero
+    call alloc_x(txy1, opt_global=.true.) !global indices
+    txy1 = zero
 
     allocate(phi1(xstart(1):xend(1),xstart(2):xend(2),xstart(3):xend(3),1:numscalar)) !global indices
     phi1 = zero
@@ -327,6 +330,9 @@ contains
     allocate (tmean(xstS(1):xenS(1),xstS(2):xenS(2),xstS(3):xenS(3)))
     tmean=zero
 
+    allocate (txymean(xstS(1):xenS(1),xstS(2):xenS(2),xstS(3):xenS(3)))
+    txymean=zero
+    
     !Y PENCILS
     call alloc_y(ux2)
     ux2=zero

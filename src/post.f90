@@ -38,6 +38,7 @@ PROGRAM post
   phi1=zero; phim1=zero
   diss1=zero; dissm1=zero
   pre1=zero; prem1=zero
+  txy1=zero
 
   read_phi=0; read_u=0; read_ibm=0
   open(10,file='post.prm',status='unknown',form='formatted')
@@ -115,7 +116,7 @@ PROGRAM post
      endif
      if (ipost.ne.0) then
         if (comp_post .eq. 1) then
-           call postprocessing(ux1,uy1,uz1,phi1,ep1)
+           call postprocessing(ux1,uy1,uz1,phi1,ep1,txy1)
         endif
      endif
      call cpu_time(trank)
