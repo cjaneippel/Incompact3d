@@ -180,11 +180,9 @@ contains
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: gx
     real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar) :: phi
 
-    if (imassconserve==1) then
-      call transpose_x_to_y(ux,gx)
-      call forceabl(gx)
-      call transpose_y_to_x(gx,ux)
-    endif
+    call transpose_x_to_y(ux,gx)
+    call forceabl(gx)
+    call transpose_y_to_x(gx,ux)
 
     if ((iconcprec.eq.1).or.(ishiftedper.eq.1)) then
       call fringe_region(ux,uy,uz)
@@ -211,17 +209,8 @@ contains
 
     integer :: i
    
-    ! BL Forcing (Pressure gradient or geostrophic wind)
-    if (iPressureGradient==1) then
-       dux1(:,:,:,1)=dux1(:,:,:,1)+ustar**2./dBL
-       if (iconcprec.eq.1) then
-          do i=1,xsize(1)
-             if (real(i-1,mytype)*dx >= pdl) then
-                dux1(i,:,:,1)=dux1(i,:,:,1)-ustar**2./dBL
-             endif
-          enddo
-       endif
-    else if (iCoriolis==1 .and. iPressureGradient==0) then
+    ! BL Forcing (geostrophic wind)
+    if (iCoriolis==1 .and. iPressureGradient==0) then
        dux1(:,:,:,1)=dux1(:,:,:,1)+CoriolisFreq*(-UG(3))
        duz1(:,:,:,1)=duz1(:,:,:,1)-CoriolisFreq*(-UG(1))
     endif
@@ -655,7 +644,7 @@ contains
 
   !*******************************************************************************
   !
-  subroutine forceabl (ux) ! Routine to force constant flow rate
+  subroutine forceabl (ux) ! Routine to force BL
   !
   !*******************************************************************************
 
@@ -672,46 +661,59 @@ contains
     integer :: j,i,k,code
     real(mytype) :: can,ut3,ut,ut4,xloc
 
-    ut3=zero
-    do k=1,ysize(3)
-      do i=1,ysize(1)
-        xloc=(i+ystart(1)-1-1)*dx
-        if (iconcprec.eq.1.and.xloc>=pdl) then
-          continue  
-        else
-          ut=zero
-          do j=1,ny-1
-            if (istret/=0) ut=ut+(yp(j+1)-yp(j))*(ux(i,j+1,k)-half*(ux(i,j+1,k)-ux(i,j,k)))
-            if (istret==0) ut=ut+(yly/real(ny-1,mytype))*(ux(i,j+1,k)-half*(ux(i,j+1,k)-ux(i,j,k)))
+    ! Constant flow rate BL Forcing
+    if(imassconserve.eq.1) then
+        ut3=zero
+        do k=1,ysize(3)
+          do i=1,ysize(1)
+            xloc=(i+ystart(1)-1-1)*dx
+            if (iconcprec.eq.1.and.xloc>=pdl) then
+              continue  
+            else
+              ut=zero
+              do j=1,ny-1
+                if (istret/=0) ut=ut+(yp(j+1)-yp(j))*(ux(i,j+1,k)-half*(ux(i,j+1,k)-ux(i,j,k)))
+                if (istret==0) ut=ut+(yly/real(ny-1,mytype))*(ux(i,j+1,k)-half*(ux(i,j+1,k)-ux(i,j,k)))
+              enddo
+              ut3=ut3+ut
+            endif
           enddo
-          ut3=ut3+ut
-        endif
-      enddo
-    enddo
-    ut3=ut3/ysize(1)/ysize(3)
+        enddo
+        ut3=ut3/ysize(1)/ysize(3)
 
-    call MPI_ALLREDUCE(ut3,ut4,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
-    ut4=ut4/nproc
-    if (iconcprec.eq.1) ut4=ut4*(xlx/pdl)
+        call MPI_ALLREDUCE(ut3,ut4,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+        ut4=ut4/nproc
+        if (iconcprec.eq.1) ut4=ut4*(xlx/pdl)
 
-    ! Flow rate for a logarithmic profile
-    !can=-(ustar/k_roughness*yly*(log(yly/z_zero)-1.)-ut4)
-    can=-(ustar/k_roughness*(yly*log(dBL/z_zero)-dBL)-ut4)
+        ! Flow rate for a logarithmic profile
+        !can=-(ustar/k_roughness*yly*(log(yly/z_zero)-1.)-ut4)
+        can=-(ustar/k_roughness*(yly*log(dBL/z_zero)-dBL)-ut4)
 
-    if (nrank==0.and.mod(itime,ilist)==0)  write(*,*) '# Rank ',nrank,'correction to ensure constant flow rate',ut4,can
-
-    do k=1,ysize(3)
-      do i=1,ysize(1)
-        xloc=real(i+ystart(1)-1-1,mytype)*dx
-        if (iconcprec.eq.1.and.xloc>=pdl) then
-          continue
-        else
-          do j=1,ny
-            ux(i,j,k)=ux(i,j,k)-can/yly
+        if (nrank==0.and.mod(itime,ilist)==0)  write(*,*) '# Rank ',nrank,'correction to ensure constant flow rate',ut4,can
+    
+        do k=1,ysize(3)
+          do i=1,ysize(1)
+            xloc=real(i+ystart(1)-1-1,mytype)*dx
+            if (iconcprec.eq.1.and.xloc>=pdl) then
+              continue
+            else
+              do j=1,ny
+                ux(i,j,k)=ux(i,j,k)-can/yly
+              enddo
+            endif
           enddo
-        endif
-      enddo
-    enddo
+        enddo
+    ! Pressure gradient BL Forcing
+    elseif(iPressureGradient.eq.1) then
+       ux(:,:,:)=ux(:,:,:)+ustar**2./dBL
+       if (iconcprec.eq.1) then
+          do i=1,ysize(1)
+             if (real(i-1,mytype)*dx >= pdl) then
+                ux(i,:,:)=ux(i,:,:)-ustar**2./dBL
+             endif
+          enddo
+       endif
+    endif
 
     return
   end subroutine forceabl
