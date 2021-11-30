@@ -36,7 +36,7 @@ module var
   USE variables
   USE param
   USE complex_geometry
-
+  
   ! define all major arrays here
   real(mytype), save, allocatable, dimension(:,:,:) :: ux1, ux2, ux3, po3, dv3
   real(mytype), save, allocatable, dimension(:,:,:,:) :: pp3
@@ -47,7 +47,7 @@ module var
   real(mytype), save, allocatable, dimension(:,:,:) :: divu3
   real(mytype), save, allocatable, dimension(:,:,:,:) :: phi1, phi2, phi3
   real(mytype), save, allocatable, dimension(:,:,:) :: px1, py1, pz1
-  real(mytype), save, allocatable, dimension(:,:,:) :: ep1, diss1, pre1, depo, depof, kine
+  real(mytype), save, allocatable, dimension(:,:,:) :: ep1, diss1, pre1
   real(mytype), save, allocatable, dimension(:,:,:,:) :: dux1,duy1,duz1  ! Output of convdiff
   real(mytype), save, allocatable, dimension(:,:,:,:,:) :: dphi1
   real(mytype), save, allocatable, dimension(:,:,:) :: mu1,mu2,mu3
@@ -56,20 +56,10 @@ module var
 
   !arrays for post processing
   real(mytype), save, allocatable, dimension(:,:,:) :: f1,fm1
-  real(mytype), save, allocatable, dimension(:,:,:) :: uxm1, uym1, phim1, prem1, dissm1
-  real(mytype), save, allocatable, dimension(:,:,:) :: uxm2, uym2, phim2, prem2, dissm2
 
   !arrays for statistic collection
   real(mytype), save, allocatable, dimension(:,:,:) :: umean,vmean,wmean,pmean,uumean,vvmean,wwmean,uvmean,uwmean,vwmean,tmean,txymean
   real(mytype), save, allocatable, dimension(:,:,:,:) :: phimean,phiphimean,uphimean,vphimean,wphimean
-  real(mytype), save, allocatable, dimension(:,:,:) :: tik1,tik2,tak1,tak2
-  real(mytype), save, allocatable, dimension(:,:,:) :: u1sum_tik,u1sum_tak
-  real(mytype), save, allocatable, dimension(:,:,:) :: u1sum,v1sum,w1sum,u2sum,v2sum,w2sum
-  real(mytype), save, allocatable, dimension(:,:,:) :: u3sum,v3sum,w3sum,u4sum,v4sum,w4sum
-  real(mytype), save, allocatable, dimension(:,:,:) :: uvsum,uwsum,vwsum,disssum,presum,tsum
-
-  !arrays for extra statistics collection
-  real(mytype), save, allocatable, dimension(:,:,:) :: dudxsum,utmapsum
 
   !arrays for visualization
   real(mytype), save, allocatable, dimension(:,:,:) :: uvisu
@@ -284,16 +274,22 @@ contains
     !pre_correc 2d array
     allocate(dpdyx1(xsize(2),xsize(3)),dpdyxn(xsize(2),xsize(3)))
     dpdyx1=zero
+    dpdyxn=zero
     allocate(dpdzx1(xsize(2),xsize(3)),dpdzxn(xsize(2),xsize(3)))
-    dpdyx1=zero
+    dpdzx1=zero
+    dpdzxn=zero
     allocate(dpdxy1(xsize(1),xsize(3)),dpdxyn(xsize(1),xsize(3)))
-    dpdyx1=zero
+    dpdxy1=zero
+    dpdxyn=zero
     allocate(dpdzy1(xsize(1),xsize(3)),dpdzyn(xsize(1),xsize(3)))
-    dpdyx1=zero
+    dpdzy1=zero
+    dpdzyn=zero
     allocate(dpdxz1(xsize(1),xsize(2)),dpdxzn(xsize(1),xsize(2)))
-    dpdyx1=zero
+    dpdxz1=zero
+    dpdxzn=zero
     allocate(dpdyz1(xsize(1),xsize(2)),dpdyzn(xsize(1),xsize(2)))
-    dpdyx1=zero
+    dpdyz1=zero
+    dpdyzn=zero
 
     !arrays for visualization!pay attention to the size!
     allocate(uvisu(xstV(1):xenV(1),xstV(2):xenV(2),xstV(3):xenV(3)))
