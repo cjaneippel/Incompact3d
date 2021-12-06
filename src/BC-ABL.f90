@@ -66,7 +66,7 @@ contains
     do k=1,xsize(3)
     do j=1,xsize(2)
        if (istret == 0) y=real(j+xstart(2)-1-1,mytype)*dy
-       if (istret /= 0) y=yp(j)
+       if (istret /= 0) y=yp(j+xstart(2)-1)
        if (iPressureGradient.eq.1.or.imassconserve.eq.1) then
            bxx1(j,k)=ustar/k_roughness*log((y+z_zero)/z_zero)
        else
