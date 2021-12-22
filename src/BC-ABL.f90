@@ -110,8 +110,8 @@ contains
     do j=1,xsize(2)
     do i=1,xsize(1)
        ux1(i,j,k)=bxx1(j,k)*(one+ux1(i,j,k))
-       uy1(i,j,k)=uy1(i,j,k)
-       uz1(i,j,k)=uz1(i,j,k)
+       uy1(i,j,k)=bxx1(j,k)*uy1(i,j,k)
+       uz1(i,j,k)=bxx1(j,k)*uz1(i,j,k)
     enddo
     enddo
     enddo
