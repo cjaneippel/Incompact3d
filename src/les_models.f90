@@ -135,8 +135,6 @@ contains
     endif
 
     ! SGS correction for ABL
-    ! TODO: Check which value of wallflux we should be getting, and where to plug it...
-    !       now doesn't make complete sense but works...
     if(itype.eq.itype_abl) then
        call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallfluxx1,wallfluxy1,wallfluxz1)
        if (xstart(2)==1) then

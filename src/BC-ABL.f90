@@ -285,7 +285,7 @@ contains
     use variables
     use var, only: uxf1, uzf1, phif1, uxf3, uzf3, phif3
     use var, only: di1, di2, di3
-    use var, only: sxy1, syz1, heatflux, ta2, tb2, ta3, tb3
+    use var, only: sxy1, syz1, heatflux, tb1, ta2, tb2, ta3, tb3
     !use var, only: txy1
     use ibm_param, only : ubcx, ubcy, ubcz
     use dbg_schemes, only: log_prec, tanh_prec, sqrt_prec, abs_prec, atan_prec
@@ -304,8 +304,9 @@ contains
     real(mytype) :: PsiM_HAve_local, PsiM_HAve, PsiH_HAve_local, PsiH_HAve
     real(mytype) :: L_HAve_local, L_HAve, Q_HAve_local, Q_HAve, zL, zeta_HAve
     real(mytype) :: Lold, OL_diff
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: txy1,tyz1
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: txy1,tyz1,dtwxydx
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallfluxx2,wallfluxz2
+    real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
 
     ! Construct Smag SGS stress tensor 
     txy1 = -2.0*nut1*sxy1
@@ -528,7 +529,6 @@ contains
          endif
          ! Apply second-order upwind scheme for the near wall
          ! Below should change for non-uniform grids, same for wall_sgs_scalar
-         ! TODO: check where we should be plugging in tauwallxy and tauwallzy. Is it point 1 or 2?
          if (ncly1==1) then
            txy1(i,1,k) = tauwallxy(i,k)
            tyz1(i,1,k) = tauwallzy(i,k)
@@ -541,10 +541,7 @@ contains
     endif
 
     ! Derivative of wallmodel-corrected SGS stress tensor
-    ! TODO: we should actually do this for all directions as the local model gives a non-uniform wall stress
-    ! TODO: how about the npaire variable? should it be zero or one?
-    ! TODO: check that we can do stretched meshes
-    ! TODO: when ncly1=1 i was thinking we should be doing this with deryS and nclyS=2
+    call derx(dtwxydx,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
     call transpose_x_to_y(txy1,txy2)
     call transpose_x_to_y(tyz1,tyz2)
     if (ncly1==1) then
@@ -553,6 +550,11 @@ contains
     elseif (ncly1==2) then
       call dery_22(wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
       call dery_22(wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+      call transpose_y_to_z(tyz2,tyz3)
+      call derz(dtwyzdz,tyz3,di3,sz,ffz,fsz,fwz,zsize(1),zsize(2),zsize(3),0,ubcz)
+      call transpose_z_to_y(dtwyzdz,tb2)
+      call transpose_y_to_x(tb2,tb1)
+      wallfluxy = dtwxydx + tb1
     endif
     call transpose_y_to_x(wallfluxx2,wallfluxx)
     call transpose_y_to_x(wallfluxz2,wallfluxz)
