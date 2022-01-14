@@ -99,6 +99,7 @@ contains
     use var, only : uvmean, uwmean
     use var, only : vwmean
     use var, only : phimean, phiphimean
+    use var, only : txymean
 
     implicit none
 
@@ -113,6 +114,7 @@ contains
     uvmean = zero
     uwmean = zero
     vwmean = zero
+    txymean = zero
     if (iscalar==1) then
       phimean = zero
       phiphimean = zero
@@ -185,6 +187,7 @@ contains
     use var, only : uvmean, uwmean
     use var, only : vwmean
     use var, only : phimean, phiphimean
+    use var, only : txymean
 
     implicit none
 
@@ -236,6 +239,8 @@ contains
     call read_or_write_one_stat(flag_read, gen_statname("uvmean"), uvmean)
     call read_or_write_one_stat(flag_read, gen_statname("uwmean"), uwmean)
     call read_or_write_one_stat(flag_read, gen_statname("vwmean"), vwmean)
+    
+    call read_or_write_one_stat(flag_read, gen_statname("txymean"), txymean)
 
     if (iscalar==1) then
        do is=1, numscalar
@@ -289,7 +294,7 @@ contains
   !
   ! Statistics : Intialize, update and perform IO
   !
-  subroutine overall_statistic(ux1,uy1,uz1,phi1,pp3,ep1)
+  subroutine overall_statistic(ux1,uy1,uz1,phi1,pp3,ep1,txy1)
 
     use param
     use variables
@@ -310,6 +315,7 @@ contains
     use var, only : uvmean, uwmean
     use var, only : vwmean
     use var, only : phimean, phiphimean
+    use var, only : txymean
 
     implicit none
 
@@ -317,6 +323,7 @@ contains
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(in) :: ux1,uy1,uz1,ep1
     real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar),intent(in) :: phi1
     real(mytype),dimension(ph1%zst(1):ph1%zen(1),ph1%zst(2):ph1%zen(2),nzmsize,npress) :: pp3
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(in) :: txy1
 
     !! Locals
     integer :: is
@@ -353,6 +360,10 @@ contains
     !! Second-order velocity moments
     call update_variance_vector(uumean, vvmean, wwmean, uvmean, uwmean, vwmean, &
                                 ux1, uy1, uz1, ep1)
+    
+    !! SGS stresses 
+    call update_average_scalar(txymean, txy1, ep1)
+
 
     !! Scalar statistics
     if (iscalar==1) then
