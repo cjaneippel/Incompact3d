@@ -36,6 +36,73 @@ contains
 
   !*******************************************************************************
   !
+  subroutine geomcomplex_abl(epsi,nxi,nxf,ny,nyi,nyf,nzi,nzf,dx,yp,dz,remp)
+  !
+  !*******************************************************************************
+
+    USE decomp_2d
+    use param, only : one, two, zero, pi
+    USE var, only : uvisu
+    USE param, only: ioutput, itime
+    use ibm_param
+    use dbg_schemes, only: sqrt_prec
+
+    implicit none
+
+    integer                    :: nxi,nxf,ny,nyi,nyf,nzi,nzf
+    real(mytype),dimension(nxi:nxf,nyi:nyf,nzi:nzf) :: epsi
+    real(mytype),dimension(ny) :: yp
+    real(mytype)               :: dx,dz
+    real(mytype)               :: remp
+    integer                    :: i,j,k
+    real(mytype)               :: xm,ym,zm,r,rad,hmax
+    real(mytype)               :: yterrain
+    
+
+    rad=400
+    hmax=100
+
+    ! Intitialise epsi
+    epsi(:,:,:)=zero
+
+    do k=nzi,nzf
+       zm=real(k-1,mytype)*dz
+       do j=nyi,nyf
+          !if (istret == 0) ym=real(j+xstart(2)-1-1,mytype)*dy
+          !if (istret /= 0) ym=yp(j+xstart(2)-1)
+          ym=yp(j)
+          do i=nxi,nxf
+             xm=real(i-1,mytype)*dx
+             
+             !Flat terrain
+             yterrain=hmax
+             r=1
+             
+             !Hill
+             !yterrain=hmax*cos(pi*sqrt_prec((xm-1570)**two+(zm-1570)**two)/(two*rad))**two
+             !r=sqrt_prec((xm-1570)**two+(zm-1570)**two)
+             
+             if (r.le.rad.and.ym.le.yterrain) then
+                epsi(i,j,k)=remp
+             endif
+          enddo
+       enddo
+    enddo
+                
+    !if (nrank==0) then
+    !    write(*,*)  ' '
+    !    write(*,*)  ' zm, xm, ym:', zm, xm, ym
+    !    write(*,*)  ' yterrain(xm,zm):', yterrain
+    !    write(*,*)  ' r(xm,zm):', r
+    !    write(*,*)  ' hmax,rad', hmax, rad
+    !endif
+    
+    return
+  end subroutine geomcomplex_abl
+
+
+  !*******************************************************************************
+  !
   subroutine init_abl(ux1,uy1,uz1,ep1,phi1)
   !
   !*******************************************************************************
