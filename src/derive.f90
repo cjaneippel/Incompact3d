@@ -818,7 +818,7 @@ subroutine dery_22(ty,uy,ry,sy,ffy,fsy,fwy,ppy,nx,ny,nz,npaire,lind)
 
   implicit none
 
-  integer :: nx,ny,nz,i,j,k,npaire
+  integer :: nx,ny,nz,i,j,k,npaire,wmnode
   real(mytype), dimension(nx,ny,nz) :: ty,uy
   real(mytype), dimension(nx,ny,nz) :: ry
   real(mytype), dimension(nx,nz)  :: sy
@@ -828,14 +828,15 @@ subroutine dery_22(ty,uy,ry,sy,ffy,fsy,fwy,ppy,nx,ny,nz,npaire,lind)
   if (iibm.eq.2) call lagpoly(uy)
   if (iibm.eq.3) call cubsply(uy,lind)
 
+  wmnode=4
   do k=1,nz
      do i=1,nx
-        ty(i,1,k)=af1y*uy(i,1,k)+bf1y*uy(i,2,k)+cf1y*uy(i,3,k)
-        ty(i,2,k)=af2y*(uy(i,3,k)-uy(i,1,k))
+        ty(i,wmnode-1,k)=af1y*uy(i,wmnode-1,k)+bf1y*uy(i,wmnode,k)+cf1y*uy(i,wmnode+1,k)
+        ty(i,wmnode,k)=af2y*(uy(i,wmnode+1,k)-uy(i,wmnode-1,k))
      enddo
   enddo
   do k=1,nz
-     do j=3,ny-2
+     do j=wmnode+1,ny-2
         do i=1,nx
            ty(i,j,k)=afjy*(uy(i,j+1,k)-uy(i,j-1,k))&
                 +bfjy*(uy(i,j+2,k)-uy(i,j-2,k))
@@ -849,7 +850,7 @@ subroutine dery_22(ty,uy,ry,sy,ffy,fsy,fwy,ppy,nx,ny,nz,npaire,lind)
      enddo
   enddo
   do k=1,nz
-     do j=2,ny
+     do j=wmnode,ny
         do i=1,nx
            ty(i,j,k)=ty(i,j,k)-ty(i,j-1,k)*fsy(j)
         enddo
@@ -861,7 +862,7 @@ subroutine dery_22(ty,uy,ry,sy,ffy,fsy,fwy,ppy,nx,ny,nz,npaire,lind)
      enddo
   enddo
   do k=1,nz
-     do j=ny-1,1,-1
+     do j=ny-1,wmnode-1,-1
         do i=1,nx
            ty(i,j,k)=(ty(i,j,k)-ffy(j)*ty(i,j+1,k))*fwy(j)
         enddo

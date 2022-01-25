@@ -60,7 +60,7 @@ contains
     
 
     rad=400
-    hmax=100
+    hmax=62.5
 
     ! Intitialise epsi
     epsi(:,:,:)=zero
@@ -118,7 +118,7 @@ contains
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ux1,uy1,uz1,ep1
     real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar) :: phi1
 
-    real(mytype) :: y, phinoise
+    real(mytype) :: y, phinoise, hmax
     integer :: k,j,i,ierror,ii,code
     integer, dimension (:), allocatable :: seed
 
@@ -157,13 +157,17 @@ contains
       enddo
     endif
 
+    hmax=62.5
     ! Initialize with log-law or geostrophic wind
     do k=1,xsize(3)
     do j=1,xsize(2)
        if (istret == 0) y=real(j+xstart(2)-1-1,mytype)*dy
        if (istret /= 0) y=yp(j+xstart(2)-1)
        if (iPressureGradient.eq.1.or.imassconserve.eq.1) then
-           bxx1(j,k)=ustar/k_roughness*log((y+z_zero)/z_zero)
+           bxx1(j,k)=ustar/k_roughness*log((abs(y-hmax)+z_zero)/z_zero)
+           if(y.lt.hmax) then
+               bxx1(j,k)=zero
+           endif
        else
            bxx1(j,k)=UG(1)
        endif
@@ -281,6 +285,9 @@ contains
     ! BL Forcing (Pressure gradient or geostrophic wind)
     if (iPressureGradient==1) then
        dux1(:,:,:,1)=dux1(:,:,:,1)+ustar**2./dBL
+       ! Nodes inside ibm
+       !dux1(:,1,:,1)=dux1(:,1,:,1)-ustar**2./dBL
+       !dux1(:,2,:,1)=dux1(:,2,:,1)-ustar**2./dBL
        if (iconcprec.eq.1) then
           do i=1,xsize(1)
              if (real(i-1,mytype)*dx >= pdl) then
@@ -375,6 +382,9 @@ contains
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallfluxx2,wallfluxz2
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
 
+    integer :: wmnode
+    wmnode=4
+    
     ! Construct Smag SGS stress tensor 
     txy1 = -2.0*nut1*sxy1
     tyz1 = -2.0*nut1*syz1
@@ -446,7 +456,7 @@ contains
       if (istret==0) delta=half*dy
     ! No-slip bc, dy to y=1
     else if (ncly1==2) then
-      if (istret/=0) delta=yp(2)-yp(1)
+      if (istret/=0) delta=yp(wmnode)-yp(wmnode-1)
       if (istret==0) delta=dy
     endif
 
@@ -465,9 +475,9 @@ contains
       else if (ncly1==2) then
         do k=1,xsize(3)
           do i=1,xsize(1)
-             ux_HAve_local=ux_HAve_local+uxf1(i,2,k)
-             uz_HAve_local=uz_HAve_local+uzf1(i,2,k)
-             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+phif1(i,2,k)
+             ux_HAve_local=ux_HAve_local+uxf1(i,wmnode,k)
+             uz_HAve_local=uz_HAve_local+uzf1(i,wmnode,k)
+             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+phif1(i,wmnode,k)
           enddo
         enddo
       endif
@@ -571,11 +581,11 @@ contains
              endif
            ! No-slip bc
            else if (ncly1==2) then
-             ux_delta=uxf1(i,2,k)
-             uz_delta=uzf1(i,2,k)
+             ux_delta=uxf1(i,wmnode,k)
+             uz_delta=uzf1(i,wmnode,k)
              S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
              if (iscalar==1) then
-               Phi_delta= phif1(i,2,k) + Tstat_delta
+               Phi_delta= phif1(i,wmnode,k) + Tstat_delta
                do ii=1,10
                   if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
                   Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
@@ -600,8 +610,8 @@ contains
            txy1(i,1,k) = tauwallxy(i,k)
            tyz1(i,1,k) = tauwallzy(i,k)
          elseif (ncly1==2) then
-           txy1(i,2,k) = tauwallxy(i,k)
-           tyz1(i,2,k) = tauwallzy(i,k)
+           txy1(i,wmnode,k) = tauwallxy(i,k)
+           tyz1(i,wmnode,k) = tauwallzy(i,k)
          endif 
       enddo
       enddo
@@ -739,7 +749,7 @@ contains
 
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: ux
     integer :: j,i,k,code
-    real(mytype) :: can,ut3,ut,ut4,xloc
+    real(mytype) :: can,ut3,ut,ut4,xloc,hmax
 
     ut3=zero
     do k=1,ysize(3)
@@ -765,7 +775,8 @@ contains
 
     ! Flow rate for a logarithmic profile
     !can=-(ustar/k_roughness*yly*(log(yly/z_zero)-1.)-ut4)
-    can=-(ustar/k_roughness*(yly*log(dBL/z_zero)-dBL)-ut4)
+    hmax=62.5
+    can=-(ustar/k_roughness*((yly-hmax)*log(dBL/z_zero)-dBL)-ut4)
 
     if (nrank==0.and.mod(itime,ilist)==0)  write(*,*) '# Rank ',nrank,'correction to ensure constant flow rate',ut4,can
 
@@ -776,7 +787,7 @@ contains
           continue
         else
           do j=1,ny
-            ux(i,j,k)=ux(i,j,k)-can/yly
+            ux(i,j,k)=ux(i,j,k)-can/(yly-hmax)
           enddo
         endif
       enddo

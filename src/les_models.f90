@@ -109,7 +109,7 @@ contains
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), numscalar) :: phi1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: sgsx1, sgsy1, sgsz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallfluxx1, wallfluxy1, wallfluxz1
-    integer :: iconservative
+    integer :: iconservative, wmnode
 
     ! Calculate eddy-viscosity
     if(jles.eq.1) then ! Smagorinsky
@@ -135,6 +135,7 @@ contains
     endif
 
     ! SGS correction for ABL
+    wmnode=4
     if(itype.eq.itype_abl) then
        call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallfluxx1,wallfluxy1,wallfluxz1)
        if (xstart(2)==1) then
@@ -145,9 +146,9 @@ contains
              sgsz1(:,1,:) = -wallfluxz1(:,1,:)
           ! No-slip bc
           elseif(ncly1==2) then
-             sgsx1(:,2,:) = -wallfluxx1(:,2,:)
-             sgsy1(:,2,:) = -wallfluxy1(:,2,:)
-             sgsz1(:,2,:) = -wallfluxz1(:,2,:)
+             sgsx1(:,wmnode,:) = -wallfluxx1(:,wmnode,:)
+             sgsy1(:,wmnode,:) = -wallfluxy1(:,wmnode,:)
+             sgsz1(:,wmnode,:) = -wallfluxz1(:,wmnode,:)
           endif
        endif
     endif
@@ -187,7 +188,7 @@ contains
 
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: nut1
-    real(mytype) :: smag_constant, y, length
+    real(mytype) :: smag_constant, y, length, hmax
     real(mytype) :: nutmin_loc, nutmax_loc, nutmin, nutmax
     real(mytype) :: srtmin_loc, srtmax_loc, srtmin, srtmax
 
@@ -259,6 +260,7 @@ contains
     srt_smag = zero
     srt_smag = sxx1 * sxx1 + syy1 * syy1 + szz1 * szz1 + two * sxy1 * sxy1 + two * sxz1 * sxz1 + two * syz1 * syz1
 
+    hmax=62.5
     nut1 = zero; nut2 = zero
     call transpose_x_to_y(srt_smag, srt_smag2)
     do k = 1, ysize(3)
@@ -268,7 +270,11 @@ contains
                 !Mason and Thomson damping coefficient
                 if (istret == 0) y=real(j+ystart(2)-1-1,mytype)*dy
                 if (istret /= 0) y=yp(j+ystart(2)-1)
-                smag_constant=(smagcst**(-nSmag)+(k_roughness*(y/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                !smag_constant=(smagcst**(-nSmag)+(k_roughness*(y/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                smag_constant=(smagcst**(-nSmag)+(k_roughness*((y-hmax)/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                if (y.lt.hmax) then
+                   smag_constant=0
+                endif
                 length=smag_constant*del(j)
              else
                 length=smagcst*del(j)
