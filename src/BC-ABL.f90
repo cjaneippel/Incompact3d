@@ -530,34 +530,22 @@ contains
          ! Apply second-order upwind scheme for the near wall
          ! Below should change for non-uniform grids, same for wall_sgs_scalar
          if (ncly1==1) then
-           txy1(i,1,k) = tauwallxy(i,k)
-           tyz1(i,1,k) = tauwallzy(i,k)
-         elseif (ncly1==2) then
-           txy1(i,2,k) = tauwallxy(i,k)
-           tyz1(i,2,k) = tauwallzy(i,k)
-         endif 
+           wallfluxx(i,1,k) = -(-half*(-two*nut1(i,3,k)*sxy1(i,3,k))+&
+                              two*(-two*nut1(i,2,k)*sxy1(i,2,k))-three/two*tauwallxy(i,k))/(two*delta)
+           wallfluxy(i,1,k) = zero
+           wallfluxz(i,1,k) = -(-half*(-two*nut1(i,3,k)*syz1(i,3,k))+&
+                              two*(-two*nut1(i,2,k)*syz1(i,2,k))-three/two*tauwallzy(i,k))/(two*delta)
+         ! No-slip bc
+         else if (ncly1==2) then
+           wallfluxx(i,2,k) = -(-half*(-two*nut1(i,4,k)*sxy1(i,4,k))+&
+                              two*(-two*nut1(i,3,k)*sxy1(i,3,k))-three/two*tauwallxy(i,k))/delta
+           wallfluxy(i,2,k) = zero
+           wallfluxz(i,2,k) = -(-half*(-two*nut1(i,4,k)*syz1(i,4,k))+&
+                              two*(-two*nut1(i,3,k)*syz1(i,3,k))-three/two*tauwallzy(i,k))/delta
+         endif
       enddo
       enddo
     endif
-
-    ! Derivative of wallmodel-corrected SGS stress tensor
-    call derx(dtwxydx,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
-    call transpose_x_to_y(txy1,txy2)
-    call transpose_x_to_y(tyz1,tyz2)
-    if (ncly1==1) then
-      call dery_22(wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
-      call dery_22(wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
-    elseif (ncly1==2) then
-      call dery_22(wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
-      call dery_22(wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
-      call transpose_y_to_z(tyz2,tyz3)
-      call derz(dtwyzdz,tyz3,di3,sz,ffz,fsz,fwz,zsize(1),zsize(2),zsize(3),0,ubcz)
-      call transpose_z_to_y(dtwyzdz,tb2)
-      call transpose_y_to_x(tb2,tb1)
-      wallfluxy = dtwxydx + tb1
-    endif
-    call transpose_y_to_x(wallfluxx2,wallfluxx)
-    call transpose_y_to_x(wallfluxz2,wallfluxz)
 
     ! Reset average values
     PsiM_HAve_local=zero
