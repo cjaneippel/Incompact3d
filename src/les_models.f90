@@ -141,14 +141,14 @@ contains
        if (xstart(2)==1) then
           ! Free-slip bc
           if(ncly1==1) then
-             sgsx1(:,1,:) = -wallfluxx1(:,1,:)
-             sgsy1(:,1,:) = -wallfluxy1(:,1,:)
-             sgsz1(:,1,:) = -wallfluxz1(:,1,:)
+             sgsx1(:,1,:) = wallfluxx1(:,1,:)
+             sgsy1(:,1,:) = wallfluxy1(:,1,:)
+             sgsz1(:,1,:) = wallfluxz1(:,1,:)
           ! No-slip bc
           elseif(ncly1==2) then
-             sgsx1(:,wmnode,:) = -wallfluxx1(:,wmnode,:)
-             sgsy1(:,wmnode,:) = -wallfluxy1(:,wmnode,:)
-             sgsz1(:,wmnode,:) = -wallfluxz1(:,wmnode,:)
+             sgsx1(:,wmnode,:) = wallfluxx1(:,wmnode,:)
+             sgsy1(:,wmnode,:) = wallfluxy1(:,wmnode,:)
+             sgsz1(:,wmnode,:) = wallfluxz1(:,wmnode,:)
           endif
        endif
     endif
