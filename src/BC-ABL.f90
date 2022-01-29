@@ -60,7 +60,7 @@ contains
     
 
     rad=400
-    hmax=62.5
+    hmax=0.0!31.25!.25
 
     ! Intitialise epsi
     epsi(:,:,:)=zero
@@ -83,6 +83,7 @@ contains
              !r=sqrt_prec((xm-1570)**two+(zm-1570)**two)
              
              if (r.le.rad.and.ym.le.yterrain) then
+                write(*,*) ym
                 epsi(i,j,k)=remp
              endif
           enddo
@@ -139,6 +140,7 @@ contains
     ! Generation of a random noise
     if (iin /= 0) then
       call system_clock(count=code)
+      if (iin.eq.2) code=0
       call random_seed(size = ii)
       call random_seed(put = code+63946*(nrank+1)*(/ (i - 1, i = 1, ii) /)) !
 
@@ -157,7 +159,7 @@ contains
       enddo
     endif
 
-    hmax=62.5
+    hmax=0.0!31.25!31.25!31.25!62.5
     ! Initialize with log-law or geostrophic wind
     do k=1,xsize(3)
     do j=1,xsize(2)
@@ -383,7 +385,7 @@ contains
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
 
     integer :: wmnode
-    wmnode=4
+    wmnode=2
     
     ! Construct Smag SGS stress tensor 
     txy1 = -2.0*nut1*sxy1
@@ -435,6 +437,8 @@ contains
     call transpose_z_to_y(uzf3,tb2)
     call transpose_y_to_x(ta2,uxf1)
     call transpose_y_to_x(tb2,uzf1)
+    uxf1=ux
+    uzf1=uz
 
     if (iscalar==1) then
       call filx(phif1,phi(:,:,:,1),di1,fisx,fiffx,fifsx,fifwx,xsize(1),xsize(2),xsize(3),0,zero)
@@ -619,6 +623,10 @@ contains
            wallfluxy(i,wmnode,k) = zero
            wallfluxz(i,wmnode,k) = -(-half*(-two*nut1(i,wmnode+2,k)*syz1(i,wmnode+2,k))+&
                               two*(-two*nut1(i,wmnode+1,k)*syz1(i,wmnode+1,k))-three/two*tauwallzy(i,k))/delta
+         endif
+         if (iwall.eq.1) then
+           wallfluxx(i,wmnode,k) = tauwallxy(i,k)
+           wallfluxz(i,wmnode,k) = tauwallzy(i,k)
          endif
       enddo
       enddo
