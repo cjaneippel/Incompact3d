@@ -72,6 +72,7 @@ contains
     ! Generation of a random noise
     if (iin /= 0) then
       call system_clock(count=code)
+      if (iin.eq.2) code=0
       call random_seed(size = ii)
       call random_seed(put = code+63946*(nrank+1)*(/ (i - 1, i = 1, ii) /)) !
 
@@ -358,6 +359,8 @@ contains
     call transpose_z_to_y(uzf3,tb2)
     call transpose_y_to_x(ta2,uxf1)
     call transpose_y_to_x(tb2,uzf1)
+    uxf1=ux
+    uzf1=uz
 
     if (iscalar==1) then
       call filx(phif1,phi(:,:,:,1),di1,fisx,fiffx,fifsx,fifwx,xsize(1),xsize(2),xsize(3),0,zero)
@@ -542,6 +545,10 @@ contains
            wallfluxy(i,2,k) = zero
            wallfluxz(i,2,k) = -(-half*(-two*nut1(i,4,k)*syz1(i,4,k))+&
                               two*(-two*nut1(i,3,k)*syz1(i,3,k))-three/two*tauwallzy(i,k))/delta
+         endif
+         if (iwall.eq.1) then
+           wallfluxx(i,2,k) = tauwallxy(i,k)
+           wallfluxz(i,2,k) = tauwallzy(i,k)
          endif
       enddo
       enddo
