@@ -60,7 +60,7 @@ contains
     
 
     rad=400
-    hmax=0.0!31.25!.25
+    hmax=62.5
 
     ! Intitialise epsi
     epsi(:,:,:)=zero
@@ -159,7 +159,7 @@ contains
       enddo
     endif
 
-    hmax=0.0!31.25!31.25!31.25!62.5
+    hmax=62.5
     ! Initialize with log-law or geostrophic wind
     do k=1,xsize(3)
     do j=1,xsize(2)
@@ -385,7 +385,7 @@ contains
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
 
     integer :: wmnode
-    wmnode=2
+    wmnode=4
     
     ! Construct Smag SGS stress tensor 
     txy1 = -2.0*nut1*sxy1

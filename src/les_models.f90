@@ -136,7 +136,7 @@ contains
     endif
 
     ! SGS correction for ABL
-    wmnode=3
+    wmnode=4
     if(itype.eq.itype_abl.and.iconservative.eq.0) then
        call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallfluxx1,wallfluxy1,wallfluxz1)
        if (xstart(2)==1) then
@@ -261,22 +261,22 @@ contains
     srt_smag = zero
     srt_smag = sxx1 * sxx1 + syy1 * syy1 + szz1 * szz1 + two * sxy1 * sxy1 + two * sxz1 * sxz1 + two * syz1 * syz1
 
-    hmax=15.!62.5
+    hmax=62.5
     nut1 = zero; nut2 = zero
     call transpose_x_to_y(srt_smag, srt_smag2)
     do k = 1, ysize(3)
        do j = 1, ysize(2)
           do i = 1, ysize(1)
              !if(itype.eq.itype_abl) then
-                !!Mason and Thomson damping coefficient
-                !if (istret == 0) y=real(j+ystart(2)-1-1,mytype)*dy
-                !if (istret /= 0) y=yp(j+ystart(2)-1)
-                !!smag_constant=(smagcst**(-nSmag)+(k_roughness*(y/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
-                !smag_constant=(smagcst**(-nSmag)+(k_roughness*((y-hmax)/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
-                !if (y.lt.hmax) then
-                !   smag_constant=0
-                !endif
-                !length=smag_constant*del(j)
+             !   !Mason and Thomson damping coefficient
+             !   if (istret == 0) y=real(j+ystart(2)-1-1,mytype)*dy
+             !   if (istret /= 0) y=yp(j+ystart(2)-1)
+             !   !smag_constant=(smagcst**(-nSmag)+(k_roughness*(y/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+             !   smag_constant=(smagcst**(-nSmag)+(k_roughness*((y-hmax)/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+             !   if (y.lt.hmax) then
+             !      smag_constant=0
+             !   endif
+             !   length=smag_constant*del(j)
              !else
                 length=smagcst*del(j)
              !endif
@@ -1344,7 +1344,7 @@ end subroutine wale
     tzz1 = 2.0*nut1*szz1   
     
     ! Add wall model
-    wmnode=2
+    wmnode=4
     if (itype.eq.itype_abl) then 
       call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallfluxx1,wallfluxy1,wallfluxz1)
       if (xstart(2)==1) then 
@@ -1375,14 +1375,14 @@ end subroutine wale
     sgsx3=0.;sgsy3=0.;sgsz3=0.
 
     ! WORK X-PENCILS
-    call derx (ta1,txx1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
-    call derx (tb1,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
-    call derx (tc1,txz1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
+    call derx (ta1,txx1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,zero)
+    call derx (tb1,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,zero)
+    call derx (tc1,txz1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,zero)
 
     !call filter(0.48d0)
-    !call filx(taf1,ta1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,ubcx)
-    !call filx(tbf1,tb1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,ubcx)
-    !call filx(tcf1,tc1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,ubcx)
+    !call filx(taf1,ta1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,zero)
+    !call filx(tbf1,tb1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,zero)
+    !call filx(tcf1,tc1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,zero)
 
     sgsx1 = ta1
     sgsy1 = tb1
@@ -1398,13 +1398,13 @@ end subroutine wale
     call transpose_x_to_y(sgsy1, sgsy2)
     call transpose_x_to_y(sgsz1, sgsz2)
 
-    call dery (ta2, txy2, di2, sy, ffy, fsy, fwy, ppy, ysize(1), ysize(2), ysize(3), 0, ubcy)
-    call dery (tb2, tyy2, di2, sy, ffyp, fsyp, fwyp, ppy, ysize(1), ysize(2), ysize(3), 1, ubcy)
-    call dery (tc2, tyz2, di2, sy, ffy, fsy, fwy, ppy, ysize(1), ysize(2), ysize(3), 0, ubcy)
+    call dery (ta2, txy2, di2, sy, ffy, fsy, fwy, ppy, ysize(1), ysize(2), ysize(3), 0, zero)
+    call dery (tb2, tyy2, di2, sy, ffyp, fsyp, fwyp, ppy, ysize(1), ysize(2), ysize(3), 1, zero)
+    call dery (tc2, tyz2, di2, sy, ffy, fsy, fwy, ppy, ysize(1), ysize(2), ysize(3), 0, zero)
 
-    !call fily(taf2,ta2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,ubcy)
-    !call fily(tbf2,tb2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,ubcy)
-    !call fily(tcf2,tc2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,ubcy)
+    !call fily(taf2,ta2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,zero)
+    !call fily(tbf2,tb2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,zero)
+    !call fily(tcf2,tc2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,zero)
 
     sgsx2 = sgsx2 + ta2
     sgsy2 = sgsy2 + tb2
@@ -1418,13 +1418,13 @@ end subroutine wale
     call transpose_y_to_z(tyz2, tyz3)
     call transpose_y_to_z(tzz2, tzz3)
 
-    call derz (ta3, txz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, ubcz)
-    call derz (tb3, tyz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, ubcz)
-    call derz (tc3, tzz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, ubcz)
+    call derz (ta3, txz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, zero)
+    call derz (tb3, tyz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, zero)
+    call derz (tc3, tzz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, zero)
 
-    !call filz(taf3,ta3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,ubcz)
-    !call filz(tbf3,tb3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,ubcz)
-    !call filz(tcf3,tc3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,ubcz)
+    !call filz(taf3,ta3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,zero)
+    !call filz(tbf3,tb3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,zero)
+    !call filz(tcf3,tc3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,zero)
 
     sgsx3 = sgsx3 + ta3
     sgsy3 = sgsy3 + tb3
