@@ -1368,14 +1368,14 @@ end subroutine wale
     sgsx3=0.;sgsy3=0.;sgsz3=0.
 
     ! WORK X-PENCILS
-    call derx (ta1,txx1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
-    call derx (tb1,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
-    call derx (tc1,txz1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
+    call derx (ta1,txx1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,zero)
+    call derx (tb1,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,zero)
+    call derx (tc1,txz1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,zero)
 
     !call filter(0.48d0)
-    !call filx(taf1,ta1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,ubcx)
-    !call filx(tbf1,tb1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,ubcx)
-    !call filx(tcf1,tc1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,ubcx)
+    !call filx(taf1,ta1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,zero)
+    !call filx(tbf1,tb1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,zero)
+    !call filx(tcf1,tc1,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,zero)
 
     sgsx1 = ta1
     sgsy1 = tb1
@@ -1391,13 +1391,13 @@ end subroutine wale
     call transpose_x_to_y(sgsy1, sgsy2)
     call transpose_x_to_y(sgsz1, sgsz2)
 
-    call dery (ta2, txy2, di2, sy, ffy, fsy, fwy, ppy, ysize(1), ysize(2), ysize(3), 0, ubcy)
-    call dery (tb2, tyy2, di2, sy, ffyp, fsyp, fwyp, ppy, ysize(1), ysize(2), ysize(3), 1, ubcy)
-    call dery (tc2, tyz2, di2, sy, ffy, fsy, fwy, ppy, ysize(1), ysize(2), ysize(3), 0, ubcy)
+    call dery (ta2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),0,zero)
+    call dery (tb2,tyy2,di2,sy,ffyp,fsyp,fwyp,ppy,ysize(1),ysize(2),ysize(3),1,zero)
+    call dery (tc2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),0,zero)
 
-    !call fily(taf2,ta2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,ubcy)
-    !call fily(tbf2,tb2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,ubcy)
-    !call fily(tcf2,tc2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,ubcy)
+    !call fily(taf2,ta2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,zero)
+    !call fily(tbf2,tb2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,zero)
+    !call fily(tcf2,tc2,di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,zero)
 
     sgsx2 = sgsx2 + ta2
     sgsy2 = sgsy2 + tb2
@@ -1411,13 +1411,13 @@ end subroutine wale
     call transpose_y_to_z(tyz2, tyz3)
     call transpose_y_to_z(tzz2, tzz3)
 
-    call derz (ta3, txz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, ubcz)
-    call derz (tb3, tyz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, ubcz)
-    call derz (tc3, tzz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, ubcz)
+    call derz (ta3, txz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, zero)
+    call derz (tb3, tyz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, zero)
+    call derz (tc3, tzz3, di3, sz, ffz, fsz, fwz, zsize(1), zsize(2), zsize(3), 0, zero)
 
-    !call filz(taf3,ta3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,ubcz)
-    !call filz(tbf3,tb3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,ubcz)
-    !call filz(tcf3,tc3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,ubcz)
+    !call filz(taf3,ta3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,zero)
+    !call filz(tbf3,tb3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,zero)
+    !call filz(tcf3,tc3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,zero)
 
     sgsx3 = sgsx3 + ta3
     sgsy3 = sgsy3 + tb3
