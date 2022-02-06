@@ -352,8 +352,8 @@ contains
       if (istret==0) delta=half*dy
     ! No-slip bc, dy to y=1
     else if (ncly1==2) then
-      if (istret/=0) delta=yp(2)-yp(1)
-      if (istret==0) delta=dy
+      if (istret/=0) delta=yp(4)-yp(1)
+      if (istret==0) delta=3*dy
     endif
 
     ! Find horizontally averaged velocities at delta
@@ -371,9 +371,9 @@ contains
       else if (ncly1==2) then
         do k=1,xsize(3)
           do i=1,xsize(1)
-             ux_HAve_local=ux_HAve_local+uxf1(i,2,k)
-             uz_HAve_local=uz_HAve_local+uzf1(i,2,k)
-             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+phif1(i,2,k)
+             ux_HAve_local=ux_HAve_local+uxf1(i,4,k)
+             uz_HAve_local=uz_HAve_local+uzf1(i,4,k)
+             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+phif1(i,4,k)
           enddo
         enddo
       endif
@@ -477,11 +477,11 @@ contains
              endif
            ! No-slip bc
            else if (ncly1==2) then
-             ux_delta=uxf1(i,2,k)
-             uz_delta=uzf1(i,2,k)
+             ux_delta=uxf1(i,4,k)
+             uz_delta=uzf1(i,4,k)
              S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
              if (iscalar==1) then
-               Phi_delta= phif1(i,2,k) + Tstat_delta
+               Phi_delta= phif1(i,4,k) + Tstat_delta
                do ii=1,10
                   if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
                   Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
@@ -513,24 +513,29 @@ contains
       enddo
     endif
 
-    ! Derivative of wallmodel-corrected SGS stress tensor
-    call derx(dtwxydx,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
-    call transpose_x_to_y(txy1,txy2)
-    call transpose_x_to_y(tyz1,tyz2)
-    if (ncly1==1) then
-      call dery_22(wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
-      call dery_22(wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
-    elseif (ncly1==2) then
-      call dery_22(wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
-      call dery_22(wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
-      call transpose_y_to_z(tyz2,tyz3)
-      call derz(dtwyzdz,tyz3,di3,sz,ffz,fsz,fwz,zsize(1),zsize(2),zsize(3),0,ubcz)
-      call transpose_z_to_y(dtwyzdz,tb2)
-      call transpose_y_to_x(tb2,tb1)
-      wallfluxy = dtwxydx + tb1
+    if (iwall==0) then
+      ! Derivative of wallmodel-corrected SGS stress tensor
+      call derx(dtwxydx,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
+      call transpose_x_to_y(txy1,txy2)
+      call transpose_x_to_y(tyz1,tyz2)
+      if (ncly1==1) then
+        call dery_22(wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+        call dery_22(wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+      elseif (ncly1==2) then
+        call dery_22(wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+        call dery_22(wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+        call transpose_y_to_z(tyz2,tyz3)
+        call derz(dtwyzdz,tyz3,di3,sz,ffz,fsz,fwz,zsize(1),zsize(2),zsize(3),0,ubcz)
+        call transpose_z_to_y(dtwyzdz,tb2)
+        call transpose_y_to_x(tb2,tb1)
+        wallfluxy = dtwxydx + tb1
+      endif
+      call transpose_y_to_x(wallfluxx2,wallfluxx)
+      call transpose_y_to_x(wallfluxz2,wallfluxz)
+    elseif (iwall==1) then
+      wallfluxx(:,2,:)=tauwallxy
+      wallfluxz(:,2,:)=tauwallzy
     endif
-    call transpose_y_to_x(wallfluxx2,wallfluxx)
-    call transpose_y_to_x(wallfluxz2,wallfluxz)
 
     ! Reset average values
     PsiM_HAve_local=zero
