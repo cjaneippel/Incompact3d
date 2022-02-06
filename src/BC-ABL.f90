@@ -636,8 +636,8 @@ contains
       call transpose_y_to_x(wallfluxx2,wallfluxx)
       call transpose_y_to_x(wallfluxz2,wallfluxz)
     elseif (iwall==1) then
-      wallfluxx(:,2,:)=tauwallxy
-      wallfluxz(:,2,:)=tauwallzy
+      wallfluxx(:,wmnode,:)=tauwallxy
+      wallfluxz(:,wmnode,:)=tauwallzy
     endif
 
     ! Reset average values
