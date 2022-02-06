@@ -110,6 +110,9 @@ contains
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: sgsx1, sgsy1, sgsz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallfluxx1, wallfluxy1, wallfluxz1
     integer :: iconservative
+    
+    integer :: wmnode
+    wmnode=4
 
     ! Calculate eddy-viscosity
     if(jles.eq.1) then ! Smagorinsky
@@ -146,9 +149,9 @@ contains
              sgsz1(:,1,:) = -wallfluxz1(:,1,:)
           ! No-slip bc
           elseif(ncly1==2) then
-             sgsx1(:,2,:) = -wallfluxx1(:,2,:)
-             sgsy1(:,2,:) = -wallfluxy1(:,2,:)
-             sgsz1(:,2,:) = -wallfluxz1(:,2,:)
+             sgsx1(:,wmnode,:) = -wallfluxx1(:,wmnode,:)
+             sgsy1(:,wmnode,:) = -wallfluxy1(:,wmnode,:)
+             sgsz1(:,wmnode,:) = -wallfluxz1(:,wmnode,:)
           endif
        endif
     endif
@@ -195,6 +198,8 @@ contains
     integer :: i, j, k, ierr
     character(len = 30) :: filename
 
+    real(mytype) :: hmax
+    hmax=62.5
 
     ! INFO about the auxillary arrays
     !--------------------------------------------------------
@@ -269,7 +274,10 @@ contains
                 !Mason and Thomson damping coefficient
                 if (istret == 0) y=real(j+ystart(2)-1-1,mytype)*dy
                 if (istret /= 0) y=yp(j+ystart(2)-1)
-                smag_constant=(smagcst**(-nSmag)+(k_roughness*(y/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                smag_constant=(smagcst**(-nSmag)+(k_roughness*((y-hmax)/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                if (y.lt.hmax) then
+                   smag_constant=0
+                endif
                 length=smag_constant*del(j)
              else
                 length=smagcst*del(j)
