@@ -8,6 +8,72 @@ contains
 
   !*******************************************************************************
   !
+  subroutine geomcomplex_abl(epsi,nxi,nxf,ny,nyi,nyf,nzi,nzf,dx,yp,dz,remp)
+  !
+  !*******************************************************************************
+
+    USE decomp_2d
+    use param, only : one, two, zero, pi
+    USE var, only : uvisu
+    USE param, only: ioutput, itime
+    use ibm_param
+    use dbg_schemes, only: sqrt_prec
+
+    implicit none
+
+    integer                    :: nxi,nxf,ny,nyi,nyf,nzi,nzf
+    real(mytype),dimension(nxi:nxf,nyi:nyf,nzi:nzf) :: epsi
+    real(mytype),dimension(ny) :: yp
+    real(mytype)               :: dx,dz
+    real(mytype)               :: remp
+    integer                    :: i,j,k
+    real(mytype)               :: xm,ym,zm,r,rad,hmax
+    real(mytype)               :: yterrain
+
+
+    rad=400
+    hmax=62.5
+
+    ! Intitialise epsi
+    epsi(:,:,:)=zero
+
+    do k=nzi,nzf
+       zm=real(k-1,mytype)*dz
+       do j=nyi,nyf
+          !if (istret == 0) ym=real(j+xstart(2)-1-1,mytype)*dy
+          !if (istret /= 0) ym=yp(j+xstart(2)-1)
+          ym=yp(j)
+          do i=nxi,nxf
+             xm=real(i-1,mytype)*dx
+
+             !Flat terrain
+             yterrain=hmax
+             r=1
+
+             !Hill
+             !yterrain=hmax*cos(pi*sqrt_prec((xm-1570)**two+(zm-1570)**two)/(two*rad))**two
+             !r=sqrt_prec((xm-1570)**two+(zm-1570)**two)
+
+             if (r.le.rad.and.ym.le.yterrain) then
+                epsi(i,j,k)=remp
+             endif
+          enddo
+       enddo
+    enddo
+
+    !if (nrank==0) then
+    !    write(*,*)  ' '
+    !    write(*,*)  ' zm, xm, ym:', zm, xm, ym
+    !    write(*,*)  ' yterrain(xm,zm):', yterrain
+    !    write(*,*)  ' r(xm,zm):', r
+    !    write(*,*)  ' hmax,rad', hmax, rad
+    !endif
+
+    return
+  end subroutine geomcomplex_abl
+
+  !*******************************************************************************
+  !
   subroutine init_abl(ux1,uy1,uz1,ep1,phi1)
   !
   !*******************************************************************************
@@ -26,7 +92,10 @@ contains
     real(mytype) :: y, phinoise
     integer :: k,j,i,ierror,ii,code
     integer, dimension (:), allocatable :: seed
-
+    
+    real(mytype) :: hmax
+    hmax=62.5
+    
     ux1=zero
     uy1=zero
     uz1=zero
@@ -69,7 +138,10 @@ contains
        if (istret == 0) y=real(j+xstart(2)-1-1,mytype)*dy
        if (istret /= 0) y=yp(j+xstart(2)-1)
        if (iPressureGradient.eq.1.or.imassconserve.eq.1) then
-           bxx1(j,k)=ustar/k_roughness*log((y+z_zero)/z_zero)
+           bxx1(j,k)=ustar/k_roughness*log((abs(y-hmax)+z_zero)/z_zero)
+           if(y.lt.hmax) then
+               bxx1(j,k)=zero
+           endif
        else
            bxx1(j,k)=UG(1)
        endif
@@ -280,6 +352,9 @@ contains
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: txy1,tyz1,dtwxydx
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallfluxx2,wallfluxz2
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
+    
+    integer :: wmnode
+    wmnode=4
 
     ! Construct Smag SGS stress tensor 
     txy1 = -2.0*nut1*sxy1
@@ -352,7 +427,7 @@ contains
       if (istret==0) delta=half*dy
     ! No-slip bc, dy to y=1
     else if (ncly1==2) then
-      if (istret/=0) delta=yp(4)-yp(1)
+      if (istret/=0) delta=yp(wmnode+2)-yp(wmnode-1)
       if (istret==0) delta=3*dy
     endif
 
@@ -371,9 +446,9 @@ contains
       else if (ncly1==2) then
         do k=1,xsize(3)
           do i=1,xsize(1)
-             ux_HAve_local=ux_HAve_local+uxf1(i,4,k)
-             uz_HAve_local=uz_HAve_local+uzf1(i,4,k)
-             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+phif1(i,4,k)
+             ux_HAve_local=ux_HAve_local+uxf1(i,wmnode+2,k)
+             uz_HAve_local=uz_HAve_local+uzf1(i,wmnode+2,k)
+             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+phif1(i,wmnode+2,k)
           enddo
         enddo
       endif
@@ -477,11 +552,11 @@ contains
              endif
            ! No-slip bc
            else if (ncly1==2) then
-             ux_delta=uxf1(i,4,k)
-             uz_delta=uzf1(i,4,k)
+             ux_delta=uxf1(i,wmnode+2,k)
+             uz_delta=uzf1(i,wmnode+2,k)
              S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
              if (iscalar==1) then
-               Phi_delta= phif1(i,4,k) + Tstat_delta
+               Phi_delta= phif1(i,wmnode+2,k) + Tstat_delta
                do ii=1,10
                   if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
                   Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
@@ -506,8 +581,8 @@ contains
            txy1(i,1,k) = tauwallxy(i,k)
            tyz1(i,1,k) = tauwallzy(i,k)
          elseif (ncly1==2) then
-           txy1(i,2,k) = tauwallxy(i,k)
-           tyz1(i,2,k) = tauwallzy(i,k)
+           txy1(i,wmnode,k) = tauwallxy(i,k)
+           tyz1(i,wmnode,k) = tauwallzy(i,k)
          endif 
       enddo
       enddo
@@ -651,6 +726,9 @@ contains
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: ux
     integer :: j,i,k,code
     real(mytype) :: can,ut3,ut,ut4,xloc
+    
+    real(mytype) :: hmax
+    hmax=62.5
 
     ut3=zero
     do k=1,ysize(3)
@@ -676,7 +754,7 @@ contains
 
     ! Flow rate for a logarithmic profile
     !can=-(ustar/k_roughness*yly*(log(yly/z_zero)-1.)-ut4)
-    can=-(ustar/k_roughness*(yly*log(dBL/z_zero)-dBL)-ut4)
+    can=-(ustar/k_roughness*((yly-hmax)*log(dBL/z_zero)-dBL)-ut4)
 
     if (nrank==0.and.mod(itime,ilist)==0)  write(*,*) '# Rank ',nrank,'correction to ensure constant flow rate',ut4,can
 
@@ -687,7 +765,7 @@ contains
           continue
         else
           do j=1,ny
-            ux(i,j,k)=ux(i,j,k)-can/yly
+            ux(i,j,k)=ux(i,j,k)-can/(yly-hmax)
           enddo
         endif
       enddo
