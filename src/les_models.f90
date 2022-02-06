@@ -1324,6 +1324,9 @@ end subroutine wale
     real(mytype), dimension(zsize(1), zsize(2), zsize(3)) :: taf3, tbf3, tcf3 
 
     integer :: i, j, k
+    
+    integer :: wmnode
+    wmnode=4
 
     if((iibm==1).or.(iibm==2)) then
        do k=1,xsize(3)
@@ -1350,19 +1353,19 @@ end subroutine wale
       call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallfluxx1,wallfluxy1,wallfluxz1)
       if (xstart(2)==1) then 
         if (ncly1==2) then 
-          txx1(:,2,:) = 0.
-          txy1(:,2,:) = - wallfluxx1(:,2,:)! + txy1(:,2,:)
-          txz1(:,2,:) = 0.
-          tyy1(:,2,:) = 0.
-          tyz1(:,2,:) = - wallfluxz1(:,2,:)! + tyz1(:,2,:)
-          tzz1(:,2,:) = 0.
+          txx1(:,wmnode,:) = 0.
+          txy1(:,wmnode,:) = - wallfluxx1(:,wmnode,:)! + txy1(:,2,:)
+          txz1(:,wmnode,:) = 0.
+          tyy1(:,wmnode,:) = 0.
+          tyz1(:,wmnode,:) = - wallfluxz1(:,wmnode,:)! + tyz1(:,2,:)
+          tzz1(:,wmnode,:) = 0.
         elseif (ncly1==1) then
-          txx1(:,2,:) = 0.
-          txy1(:,2,:) = - wallfluxx1(:,2,:)
-          txz1(:,2,:) = 0.
-          tyy1(:,2,:) = 0.
-          tyz1(:,2,:) = - wallfluxz1(:,2,:)
-          tzz1(:,2,:) = 0.
+          txx1(:,wmnode,:) = 0.
+          txy1(:,wmnode,:) = - wallfluxx1(:,wmnode,:)
+          txz1(:,wmnode,:) = 0.
+          tyy1(:,wmnode,:) = 0.
+          tyz1(:,wmnode,:) = - wallfluxz1(:,wmnode,:)
+          tzz1(:,wmnode,:) = 0.
         endif
       endif
     endif
