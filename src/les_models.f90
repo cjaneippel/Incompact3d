@@ -112,7 +112,7 @@ contains
     integer :: iconservative
     
     integer :: wmnode
-    wmnode=4
+    wmnode=6
 
     ! Calculate eddy-viscosity
     if(jles.eq.1) then ! Smagorinsky
@@ -1326,13 +1326,13 @@ end subroutine wale
     integer :: i, j, k
     
     integer :: wmnode
-    wmnode=4
+    wmnode=6
 
     if((iibm==1).or.(iibm==2)) then
        do k=1,xsize(3)
           do j=1,xsize(2)
              do i=1,xsize(1)
-                if(ep1(i,j, k).eq.1) then
+                if(ep1(i,j, k).eq.1.and.j.ne.wmnode-1) then
                    nut1(i,j,k) = zero
                 endif
              enddo

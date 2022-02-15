@@ -382,7 +382,7 @@ contains
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
     
     integer :: wmnode
-    wmnode=4
+    wmnode=6
 
     ! Construct Smag SGS stress tensor 
     txy1 = -2.0*nut1*sxy1
