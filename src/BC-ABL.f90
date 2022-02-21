@@ -374,10 +374,10 @@ contains
     uz_HAve_local  = zero
     Phi_HAve_local = zero
 
-    ! Free-slip bc, dy to y=1/2
+    ! Free-slip bc, y=0 to y=yp(4)
     if (ncly1==1) then
-      if (istret/=0) delta=half*(yp(2)-yp(1))
-      if (istret==0) delta=half*dy
+      if (istret/=0) delta=yp(4)-yp(1)
+      if (istret==0) delta=3*dy
     ! No-slip bc, dy to y=1
     else if (ncly1==2) then
       if (istret/=0) delta=yp(4)-yp(1)
@@ -386,16 +386,16 @@ contains
 
     ! Find horizontally averaged velocities at delta
     if (xstart(2)==1) then
-      ! Free-slip bc, j=1.5
+      ! Free-slip bc, j=4
       if (ncly1==1) then
         do k=1,xsize(3)
           do i=1,xsize(1)
-             ux_HAve_local=ux_HAve_local+half*(uxf1(i,1,k)+uxf1(i,2,k))
-             uz_HAve_local=uz_HAve_local+half*(uzf1(i,1,k)+uzf1(i,2,k))
-             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+half*(phif1(i,1,k)+phif1(i,2,k))
+             ux_HAve_local=ux_HAve_local+uxf1(i,4,k)
+             uz_HAve_local=uz_HAve_local+uzf1(i,4,k)
+             if (iscalar==1) Phi_HAve_local=Phi_HAve_local+phif1(i,4,k)
           enddo
         enddo
-      ! No-slip bc, j=2
+      ! No-slip bc, j=4
       else if (ncly1==2) then
         do k=1,xsize(3)
           do i=1,xsize(1)
@@ -485,11 +485,11 @@ contains
          else
            ! Free-slip bc
            if (ncly1==1) then
-             ux_delta=half*(uxf1(i,1,k)+uxf1(i,2,k))
-             uz_delta=half*(uzf1(i,1,k)+uzf1(i,2,k))
+             ux_delta=uxf1(i,4,k)
+             uz_delta=uzf1(i,4,k)
              S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
              if (iscalar==1) then
-               Phi_delta= half*(phif1(i,1,k)+ phif1(i,2,k)) + Tstat_delta
+               Phi_delta= phif1(i,4,k) + Tstat_delta
                do ii=1,10
                   if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
                   Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
@@ -561,8 +561,13 @@ contains
       call transpose_y_to_x(wallfluxx2,wallfluxx)
       call transpose_y_to_x(wallfluxz2,wallfluxz)
     elseif (iwall==1) then
-      wallfluxx(:,2,:)=tauwallxy
-      wallfluxz(:,2,:)=tauwallzy
+      if (ncly1==1) then
+        wallfluxx(:,1,:)=tauwallxy
+        wallfluxz(:,1,:)=tauwallzy
+      elseif (ncly1==2) then
+        wallfluxx(:,2,:)=tauwallxy
+        wallfluxz(:,2,:)=tauwallzy
+      endif
     endif
 
     ! Reset average values
