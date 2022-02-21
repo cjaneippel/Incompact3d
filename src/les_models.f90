@@ -187,7 +187,7 @@ contains
     implicit none
 
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: nut1
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: nut1!, csmag
     real(mytype) :: smag_constant, y, length
     real(mytype) :: nutmin_loc, nutmax_loc, nutmin, nutmax
     real(mytype) :: srtmin_loc, srtmax_loc, srtmin, srtmax
@@ -271,8 +271,10 @@ contains
                 if (istret /= 0) y=yp(j+ystart(2)-1)
                 smag_constant=(smagcst**(-nSmag)+(k_roughness*(y/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
                 length=smag_constant*del(j)
+                !csmag(i,j,k) = smag_constant
              else
                 length=smagcst*del(j)
+                !csmag(i,j,k) = smagcst
              endif
              !Calculate eddy visc nu_t
              nut2(i, j, k) = ((length)**two) * sqrt_prec(two * srt_smag2(i, j, k))
@@ -308,6 +310,8 @@ contains
        write(filename, "('nut_smag',I4.4)") itime / ioutput
        call decomp_2d_write_one(1, nut1, turb_dir, filename, 2, io_turb)
 
+!       write(filename, "('csmag',I4.4)") itime / ioutput
+!       call decomp_2d_write_one(1, csmag, turb_dir, filename, 2, io_turb)
     endif
 
   end subroutine smag
@@ -1349,12 +1353,12 @@ end subroutine wale
           tyz1(:,2,:) = - wallfluxz1(:,2,:)! + tyz1(:,2,:)
           tzz1(:,2,:) = 0.
         elseif (ncly1==1) then
-          txx1(:,2,:) = 0.
-          txy1(:,2,:) = - wallfluxx1(:,2,:)
-          txz1(:,2,:) = 0.
-          tyy1(:,2,:) = 0.
-          tyz1(:,2,:) = - wallfluxz1(:,2,:)
-          tzz1(:,2,:) = 0.
+          txx1(:,1,:) = 0.
+          txy1(:,1,:) = - wallfluxx1(:,1,:)
+          txz1(:,1,:) = 0.
+          tyy1(:,1,:) = 0.
+          tyz1(:,1,:) = - wallfluxz1(:,1,:)
+          tzz1(:,1,:) = 0.
         endif
       endif
     endif
