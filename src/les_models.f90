@@ -144,9 +144,9 @@ contains
        if (xstart(2)==1) then
           ! Free-slip bc
           if(ncly1==1) then
-             sgsx1(:,1,:) = -wallfluxx1(:,1,:)
-             sgsy1(:,1,:) = -wallfluxy1(:,1,:)
-             sgsz1(:,1,:) = -wallfluxz1(:,1,:)
+             sgsx1(:,wmnode-1,:) = -wallfluxx1(:,wmnode-1,:)
+             sgsy1(:,wmnode-1,:) = -wallfluxy1(:,wmnode-1,:)
+             sgsz1(:,wmnode-1,:) = -wallfluxz1(:,wmnode-1,:)
           ! No-slip bc
           elseif(ncly1==2) then
              sgsx1(:,wmnode,:) = -wallfluxx1(:,wmnode,:)
@@ -1359,10 +1359,10 @@ end subroutine wale
           tzz1(:,wmnode,:) = 0.
         elseif (ncly1==1) then
           txx1(:,wmnode,:) = 0.
-          txy1(:,wmnode,:) = - wallfluxx1(:,wmnode,:)
+          txy1(:,wmnode,:) = - wallfluxx1(:,wmnode-1,:)! + txy1(:,1,:) 
           txz1(:,wmnode,:) = 0.
           tyy1(:,wmnode,:) = 0.
-          tyz1(:,wmnode,:) = - wallfluxz1(:,wmnode,:)
+          tyz1(:,wmnode,:) = - wallfluxz1(:,wmnode-1,:)! + tyz1(:,1,:) 
           tzz1(:,wmnode,:) = 0.
         endif
       endif
