@@ -1360,12 +1360,12 @@ end subroutine wale
           tyz1(:,wmnode,:) = - wallfluxz1(:,wmnode,:)! + tyz1(:,2,:)
           tzz1(:,wmnode,:) = 0.
         elseif (ncly1==1) then
-          txx1(:,wmnode,:) = 0.
-          txy1(:,wmnode,:) = - wallfluxx1(:,wmnode-1,:)! + txy1(:,1,:) 
-          txz1(:,wmnode,:) = 0.
-          tyy1(:,wmnode,:) = 0.
-          tyz1(:,wmnode,:) = - wallfluxz1(:,wmnode-1,:)! + tyz1(:,1,:) 
-          tzz1(:,wmnode,:) = 0.
+          txx1(:,wmnode-1,:) = 0.
+          txy1(:,wmnode-1,:) = - wallfluxx1(:,wmnode-1,:)! + txy1(:,1,:) 
+          txz1(:,wmnode-1,:) = 0.
+          tyy1(:,wmnode-1,:) = 0.
+          tyz1(:,wmnode-1,:) = - wallfluxz1(:,wmnode-1,:)! + tyz1(:,1,:) 
+          tzz1(:,wmnode-1,:) = 0.
         endif
       endif
     endif
