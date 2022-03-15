@@ -19,7 +19,7 @@ module var
   real(mytype), save, allocatable, dimension(:,:,:) :: divu3
   real(mytype), save, allocatable, dimension(:,:,:,:) :: phi1, phi2, phi3
   real(mytype), save, allocatable, dimension(:,:,:) :: px1, py1, pz1
-  real(mytype), save, allocatable, dimension(:,:,:) :: ep1, diss1, pre1
+  real(mytype), save, allocatable, dimension(:,:,:) :: ep1, diss1, pre1 
   real(mytype), save, allocatable, dimension(:,:,:,:) :: dux1,duy1,duz1  ! Output of convdiff
   real(mytype), save, allocatable, dimension(:,:,:,:,:) :: dphi1
   real(mytype), save, allocatable, dimension(:,:,:) :: mu1,mu2,mu3
@@ -68,6 +68,7 @@ module var
 
   ! working arrays for ABL
   real(mytype), save, allocatable, dimension(:,:) :: heatflux
+  real(mytype), save, allocatable, dimension(:,:,:) :: wmnode
 
   ! arrays for turbine modelling
   real(mytype), save, allocatable, dimension(:,:,:) :: FTx, FTy, FTz, Fdiscx, Fdiscy, Fdiscz
@@ -1306,14 +1307,16 @@ contains
     dphi1=zero
     
     !! ABL
-    allocate(heatflux(xsize(1),xsize(3)))
+    allocate(heatflux(ysize(1),ysize(3)))
     heatflux = zero
-    allocate(PsiM(xsize(1),xsize(3)))
+    allocate(PsiM(ysize(1),ysize(3)))
     PsiM = zero
-    allocate(PsiH(xsize(1),xsize(3)))
+    allocate(PsiH(ysize(1),ysize(3)))
     PsiH = zero
-    allocate(Tstat(xsize(2),1))
+    allocate(Tstat(ysize(2),1))
     Tstat = zero
+    allocate(wmnode(xsize(1),xsize(2),xsize(3)))
+    wmnode=zero
 
     !! Turbine Modelling
     if (iturbine.eq.1) then

@@ -50,7 +50,7 @@ program xcompact3d
              call body(ux1,uy1,uz1,ep1)
           endif
         endif
-        call calculate_transeq_rhs(drho1,dux1,duy1,duz1,dphi1,rho1,ux1,uy1,uz1,ep1,phi1,divu3)
+        call calculate_transeq_rhs(drho1,dux1,duy1,duz1,dphi1,rho1,ux1,uy1,uz1,ep1,phi1,divu3,wmnode)
 #ifdef DEBG
         call check_transients()
 #endif
@@ -194,7 +194,7 @@ subroutine init_xcompact3d()
   if ((iibm.eq.2).or.(iibm.eq.3)) then
      call genepsi3d(ep1)
   else if (iibm.eq.1) then
-     call epsi_init(ep1)
+     call epsi_init(ep1,wmnode)
      call body(ux1,uy1,uz1,ep1)
   endif
 

@@ -57,7 +57,7 @@ subroutine parameter(input_i3d)
        nclxS1, nclxSn, nclyS1, nclySn, nclzS1, nclzSn, &
        scalar_lbound, scalar_ubound, sc_even, sc_skew, &
        alpha_sc, beta_sc, g_sc, Tref
-  NAMELIST /LESModel/ jles, smagcst, smagwalldamp, nSmag, walecst, maxdsmagcst, iwall
+  NAMELIST /LESModel/ jles, smagcst, smagwalldamp, nSmag, walecst, maxdsmagcst, iconserv
   NAMELIST /WallModel/ smagwalldamp
   NAMELIST /Tripping/ itrip,A_tr,xs_tr_tbl,ys_tr_tbl,ts_tr_tbl,x0_tr_tbl
   NAMELIST /ibmstuff/ cex,cey,cez,ra,nobjmax,nraf,nvol,iforces, npif, izap, ianal, imove, thickness, chord, omega ,ubcx,ubcy,ubcz,rads, c_air
@@ -65,9 +65,10 @@ subroutine parameter(input_i3d)
   NAMELIST /LMN/ dens1, dens2, prandtl, ilmn_bound, ivarcoeff, ilmn_solve_temp, &
        massfrac, mol_weight, imultispecies, primary_species, &
        Fr, ibirman_eos
-  NAMELIST /ABL/ z_zero, iwallmodel, k_roughness, ustar, dBL, &
+  NAMELIST /ABL/ z_zero, k_roughness, ustar, dBL, &
        imassconserve, ibuoyancy, iPressureGradient, iCoriolis, CoriolisFreq, &
-       istrat, idamping, iheight, TempRate, TempFlux, itherm, gravv, UG, T_wall, T_top, ishiftedper, iconcprec, pdl 
+       istrat, idamping, iheight, TempRate, TempFlux, itherm, gravv, UG, T_wall, &
+       T_top, ishiftedper, iconcprec, pdl, iterrain, ioutputabl, hibm, hmax, rad, chx, chz 
   NAMELIST /CASE/ tgv_twod, pfront
   NAMELIST/ALMParam/iturboutput,NTurbines,TurbinesPath,NActuatorlines,ActuatorlinesPath,eps_factor,rho_air
   NAMELIST/ADMParam/Ndiscs,ADMcoords,C_T,aind,iturboutput,rho_air
@@ -583,8 +584,9 @@ subroutine parameter_defaults()
   datapath = './data/'
 
   !! LES stuff
-  SmagWallDamp=0
+  SmagWallDamp=1
   nSmag=1
+  iconserv=1
 
   !! IBM stuff
   nraf = 0
@@ -632,7 +634,6 @@ subroutine parameter_defaults()
   ustar=0.45_mytype
   dBL=250._mytype
   iPressureGradient=1
-  iwallmodel=1
   imassconserve=0
   ibuoyancy=1
   iheight=0
@@ -648,6 +649,14 @@ subroutine parameter_defaults()
   !! Turbine modelling
   iturbine=0
   rho_air=one
+  !! Complex Terrain
+  iterrain=1
+  hibm=0.03125_mytype
+  hmax=0.04_mytype
+  rad=0.1_mytype
+  chx=1.0625_mytype
+  chz=1.0625_mytype
+  iterrain=0
 
   !! IO
   ivisu = 1

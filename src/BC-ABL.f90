@@ -8,12 +8,13 @@ contains
 
   !*******************************************************************************
   !
-  subroutine geomcomplex_abl(epsi,nxi,nxf,ny,nyi,nyf,nzi,nzf,dx,yp,dz,remp)
+  subroutine geomcomplex_abl(epsi,nxi,nxf,ny,nyi,nyf,nzi,nzf,dx,yp,dz,remp,wmnode)
   !
   !*******************************************************************************
 
     USE decomp_2d
     use param, only : one, two, zero, pi
+    use param, only : iterrain, hibm, hmax, rad, chx, chz, iibm
     USE var, only : uvisu
     USE param, only: ioutput, itime
     use ibm_param
@@ -27,47 +28,85 @@ contains
     real(mytype)               :: dx,dz
     real(mytype)               :: remp
     integer                    :: i,j,k
-    real(mytype)               :: xm,ym,zm,r,rad,hmax
-    real(mytype)               :: yterrain
+    real(mytype)               :: xm,ym,zm,r
+    real(mytype)               :: yterrain,ywm
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: wmnode
 
-
-    rad=400
-    hmax=62.5
-
-    ! Intitialise epsi
+    ! Intitialise epsi and wmnode
     epsi(:,:,:)=zero
+    wmnode(:,:,:)=zero
 
+    !Populate epsi
     do k=nzi,nzf
        zm=real(k-1,mytype)*dz
        do j=nyi,nyf
-          !if (istret == 0) ym=real(j+xstart(2)-1-1,mytype)*dy
-          !if (istret /= 0) ym=yp(j+xstart(2)-1)
           ym=yp(j)
           do i=nxi,nxf
              xm=real(i-1,mytype)*dx
-
-             !Flat terrain
-             yterrain=hmax
-             r=1
-
-             !Hill
-             !yterrain=hmax*cos(pi*sqrt_prec((xm-1570)**two+(zm-1570)**two)/(two*rad))**two
-             !r=sqrt_prec((xm-1570)**two+(zm-1570)**two)
-
-             if (r.le.rad.and.ym.le.yterrain) then
+             if (iterrain==1) then
+                !Flat terrain
+                yterrain=hibm
+             elseif (iterrain==2) then
+                !2D Hill
+                r=abs(xm-chx)
+                if (r.le.rad) then
+                   yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
+                else
+                   yterrain=hibm
+                endif
+             elseif (iterrain==3) then
+                !3D Hill
+                r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
+                if (r.le.rad) then
+                   yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
+                else
+                   yterrain=hibm
+                endif
+             endif
+             if (ym.le.yterrain) then
                 epsi(i,j,k)=remp
              endif
           enddo
        enddo
     enddo
 
-    !if (nrank==0) then
-    !    write(*,*)  ' '
-    !    write(*,*)  ' zm, xm, ym:', zm, xm, ym
-    !    write(*,*)  ' yterrain(xm,zm):', yterrain
-    !    write(*,*)  ' r(xm,zm):', r
-    !    write(*,*)  ' hmax,rad', hmax, rad
-    !endif
+    if((iibm==1).or.(iibm==2)) then
+    ! Find wall model nodes
+    do k=1,xsize(3)
+       zm=real(k+xstart(3)-1-1,mytype)*dz
+       do i=1,xsize(1)
+          xm=real(i-1,mytype)*dx
+          if (iterrain==1) then
+             !Flat terrain
+             yterrain=hibm
+          elseif (iterrain==2) then
+             !2D Hill
+             r=abs(xm-chx)
+             if (r.le.rad) then
+                yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
+             else
+                yterrain=hibm
+             endif
+          elseif (iterrain==3) then
+             !3D Hill
+             r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
+             if (r.le.rad) then
+                yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
+             else
+                yterrain=hibm
+             endif
+          endif
+          do j=1,xsize(2)
+             ym=yp(j+xstart(2)-1)
+             ywm=yterrain+yp(j+xstart(2))-ym
+             if (ym.gt.yterrain.and.ym.le.ywm) then
+                wmnode(i,j,k)=one
+                exit
+             endif
+          enddo
+       enddo
+    enddo
+    endif
 
     return
   end subroutine geomcomplex_abl
@@ -83,6 +122,7 @@ contains
     use variables
     use param
     use MPI
+    use dbg_schemes, only: sqrt_prec
 
     implicit none
 
@@ -93,9 +133,9 @@ contains
     integer :: k,j,i,ierror,ii,code
     integer, dimension (:), allocatable :: seed
     
-    real(mytype) :: hmax
-    hmax=62.5
-    
+    real(mytype)               :: xm,zm,r
+    real(mytype)               :: yterrain
+
     ux1=zero
     uy1=zero
     uz1=zero
@@ -134,14 +174,42 @@ contains
 
     ! Initialize with log-law or geostrophic wind
     do k=1,xsize(3)
+    zm=real(k+xstart(3)-1-1,mytype)*dz
     do j=1,xsize(2)
        if (istret == 0) y=real(j+xstart(2)-1-1,mytype)*dy
        if (istret /= 0) y=yp(j+xstart(2)-1)
        if (iPressureGradient.eq.1.or.imassconserve.eq.1) then
-           bxx1(j,k)=ustar/k_roughness*log((abs(y-hmax)+z_zero)/z_zero)
-           if(y.lt.hmax) then
-               bxx1(j,k)=zero
-           endif
+           do i=1,xsize(1)
+               xm=real(i-1,mytype)*dx
+               if (iibm==0) then
+                  !Regular ABL
+                  yterrain=zero
+               elseif (iterrain==1) then
+                  !Flat terrain
+                  yterrain=hibm
+               elseif (iterrain==2) then
+                  !2D Hill
+                  r=abs(xm-chx)
+                  if (r.le.rad) then
+                     yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
+                  else
+                     yterrain=hibm
+                  endif
+               elseif (iterrain==3) then
+                  !3D Hill
+                  r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
+                  if (r.le.rad) then
+                     yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
+                  else
+                     yterrain=hibm
+                  endif
+               endif
+               if(y.le.yterrain) then
+                   bxx1(j,k)=zero
+               else
+                   bxx1(j,k)=ustar/k_roughness*log((abs(y-yterrain)+z_zero)/z_zero)
+               endif
+           enddo
        else
            bxx1(j,k)=UG(1)
        endif
@@ -247,6 +315,7 @@ contains
     USE param
     USE variables
     USE decomp_2d
+    use dbg_schemes, only: sqrt_prec
 
     implicit none
 
@@ -254,18 +323,50 @@ contains
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ux1, uy1, uz1
     real(mytype),dimension(xsize(1),xsize(2),xsize(3), numscalar) :: phi1
 
-    integer :: i
-   
+    integer :: i,k
+    
+    real(mytype)               :: xm,zm,r
+    real(mytype)               :: yterrain
+
     ! BL Forcing (Pressure gradient or geostrophic wind)
     if (iPressureGradient==1) then
-       dux1(:,:,:,1)=dux1(:,:,:,1)+ustar**2./dBL
-       if (iconcprec.eq.1) then
-          do i=1,xsize(1)
-             if (real(i-1,mytype)*dx >= pdl) then
-                dux1(i,:,:,1)=dux1(i,:,:,1)-ustar**2./dBL
-             endif
-          enddo
-       endif
+       do k=1,xsize(3)
+       zm=real(k+xstart(3)-1-1,mytype)*dz
+       do i=1,xsize(1)
+           xm=real(i-1,mytype)*dx
+           if (iibm==0) then
+              !Regular ABL
+              yterrain=zero
+           elseif (iterrain==1) then
+              !Flat terrain
+              yterrain=hibm
+           elseif (iterrain==2) then
+              !2D Hill
+              r=abs(xm-chx)
+              if (r.le.rad) then
+                 yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
+              else
+                 yterrain=hibm
+              endif
+           elseif (iterrain==3) then
+              !3D Hill
+              r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
+              if (r.le.rad) then
+                 yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
+              else
+                 yterrain=hibm
+              endif
+           endif
+           dux1(i,:,k,1)=dux1(i,:,k,1)+ustar**2./(yly-yterrain)
+       enddo
+       enddo
+       !if (iconcprec.eq.1) then
+       !   do i=1,xsize(1)
+       !      if (real(i-1,mytype)*dx >= pdl) then
+       !         dux1(i,:,:,1)=dux1(i,:,:,1)-ustar**2./dBL
+       !      endif
+       !   enddo
+       !endif
     else if (iCoriolis==1 .and. iPressureGradient==0) then
        dux1(:,:,:,1)=dux1(:,:,:,1)+CoriolisFreq*(-UG(3))
        duz1(:,:,:,1)=duz1(:,:,:,1)-CoriolisFreq*(-UG(1))
@@ -320,7 +421,9 @@ contains
 
   !*******************************************************************************
   !
-  subroutine wall_sgs(ux,uy,uz,phi,nut1,wallfluxx,wallfluxy,wallfluxz)
+  subroutine wall_sgs(ux1,uy1,uz1,phi1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
+  !
+  ! Outputs stresses if iconserv=1 and fluxes if iconserv=0 (wallsgsx,wallsgsy,wallsgsz)
   !
   !*******************************************************************************
 
@@ -328,19 +431,18 @@ contains
     use decomp_2d
     use param
     use variables
-    use var, only: uxf1, uzf1, phif1, uxf3, uzf3, phif3
     use var, only: di1, di2, di3
-    use var, only: sxy1, syz1, heatflux, tb1, ta2, tb2, ta3, tb3
+    use var, only: sxy1, syz1, tb1, ta2, tb2, tc2, ta3, tb3, heatflux
     !use var, only: txy1
     use ibm_param, only : ubcx, ubcy, ubcz
     use dbg_schemes, only: log_prec, tanh_prec, sqrt_prec, abs_prec, atan_prec
    
     implicit none
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(in) :: ux,uy,uz, nut1
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar),intent(in) :: phi
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(out) :: wallfluxx,wallfluxy,wallfluxz
-    real(mytype),dimension(xsize(1),xsize(3)) :: tauwallxy, tauwallzy
-    real(mytype),dimension(xsize(1),xsize(3)) :: Obukhov, zeta
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(in) :: ux1,uy1,uz1,nut1,wmnode
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar),intent(in) :: phi1
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(out) :: wallsgsx1,wallsgsy1,wallsgsz1
+    real(mytype),dimension(ysize(1),ysize(3)) :: tauwallxy2, tauwallzy2
+    real(mytype),dimension(ysize(1),ysize(3)) :: Obukhov, zeta
     integer :: i,j,k,ii,code
     integer :: nxc, nyc, nzc, xsize1, xsize2, xsize3
     real(mytype) :: delta
@@ -350,119 +452,16 @@ contains
     real(mytype) :: L_HAve_local, L_HAve, Q_HAve_local, Q_HAve, zL, zeta_HAve
     real(mytype) :: Lold, OL_diff
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: txy1,tyz1,dtwxydx
-    real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallfluxx2,wallfluxz2
+    real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallsgsx2,wallsgsz2,wmnode2
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
     
-    integer :: wmnode
-    wmnode=6
-
-    ! Construct Smag SGS stress tensor 
-    txy1 = -2.0*nut1*sxy1
-    tyz1 = -2.0*nut1*syz1
-
-    ! Filter the velocity with twice the grid scale according to Bou-Zeid et al. (2005)
-
-    if (nclx1==1.and.xend(1)==nx) then
-       xsize1=xsize(1)-1
-    else
-       xsize1=xsize(1)
-    endif
-    if (ncly1==1.and.xend(2)==ny) then
-       xsize2=xsize(2)-1
-    else
-       xsize2=xsize(2)
-    endif
-    if (nclz1==1.and.xend(3)==nz) then
-       xsize3=xsize(3)-1
-    else
-       xsize3=xsize(3)
-    endif
-    if (nclx1==1) then
-       nxc=nxm
-    else
-       nxc=nx
-    endif
-    if (ncly1==1) then
-       nyc=nym
-    else
-       nyc=ny
-    endif
-    if (nclz1==1) then
-       nzc=nzm
-    else
-       nzc=nz
-    endif
-
-    call filter(zero)
-    call filx(uxf1,ux,di1,fisx,fiffx,fifsx,fifwx,xsize(1),xsize(2),xsize(3),0,ubcx)
-    call filx(uzf1,uz,di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,ubcz)
-    call transpose_x_to_y(uxf1,ta2)
-    call transpose_x_to_y(uzf1,tb2)
-    call transpose_y_to_z(ta2,ta3)
-    call transpose_y_to_z(tb2,tb3)
-    call filz(uxf3,ta3,di3,fisz,fiffzp,fifszp,fifwzp,zsize(1),zsize(2),zsize(3),1,ubcx)
-    call filz(uzf3,tb3,di3,fisz,fiffz,fifsz,fifwz,zsize(1),zsize(2),zsize(3),0,ubcz)
-    call transpose_z_to_y(uxf3,ta2)
-    call transpose_z_to_y(uzf3,tb2)
-    call transpose_y_to_x(ta2,uxf1)
-    call transpose_y_to_x(tb2,uzf1)
-
-    if (iscalar==1) then
-      call filx(phif1,phi(:,:,:,1),di1,fisx,fiffx,fifsx,fifwx,xsize(1),xsize(2),xsize(3),0,zero)
-      call transpose_x_to_y(phif1,ta2)
-      call transpose_y_to_z(ta2,ta3)
-      call filz(phif3,ta3,di3,fisz,fiffz,fifsz,fifwz,zsize(1),zsize(2),zsize(3),0,zero)
-      call transpose_z_to_y(phif3,ta2)
-      call transpose_y_to_x(ta2,phif1)
-    endif
-
-    ! Reset average values
-    ux_HAve_local  = zero
-    uz_HAve_local  = zero
-    Phi_HAve_local = zero
-
-    ! Define delta
-    if (istret/=0) delta=yp(wmnode+2)-yp(wmnode-1)
-    if (istret==0) delta=3*dy
-
-    ! Find horizontally averaged velocities at delta
-    if (xstart(2)==1) then
-      do k=1,xsize(3)
-        do i=1,xsize(1)
-           ux_HAve_local=ux_HAve_local+uxf1(i,wmnode+2,k)
-           uz_HAve_local=uz_HAve_local+uzf1(i,wmnode+2,k)
-           if (iscalar==1) Phi_HAve_local=Phi_HAve_local+phif1(i,wmnode+2,k)
-        enddo
-      enddo
-    endif
-    ux_HAve_local=ux_HAve_local
-    uz_HAve_local=uz_HAve_local
-    Phi_HAve_local=Phi_HAve_local
-
-    call MPI_ALLREDUCE(ux_HAve_local,ux_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
-    call MPI_ALLREDUCE(uz_HAve_local,uz_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
-    if (iscalar==1) call MPI_ALLREDUCE(Phi_HAve_local,Phi_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
-
-    ux_HAve=ux_HAve/(nxc*nzc)
-    uz_HAve=uz_HAve/(nxc*nzc)
-    S_HAve=sqrt(ux_HAve**2.+uz_HAve**2.)
-    if (iscalar==1) then 
-      Phi_HAve=Phi_HAve/(nxc*nzc)
-      if (ibuoyancy==1) then 
-        Tstat_delta =T_wall + (T_top-T_wall)*delta/yly
-      else 
-        Tstat_delta =zero
-      endif
-      Phi_HAve=Phi_HAve + Tstat_delta
-    endif
-
-    ! Reset wall flux values
-    wallfluxx=zero
-    wallfluxy=zero
-    wallfluxz=zero
-
+    ! Reset wall flux/stresses values
+    wallsgsx1 = zero
+    wallsgsy1 = zero
+    wallsgsz1 = zero
+    
     ! Initialize stratification variables
-    if (iscalar==1.and.ibuoyancy == 1.and.xstart(2)==1) then 
+    if (iscalar==1.and.ibuoyancy== 1) then 
       PsiM_HAve= zero
       PsiH_HAve= zero
       ii       = 0
@@ -501,132 +500,215 @@ contains
       PsiM_HAve=zero
       PsiH_HAve=zero
     endif
-
-    ! Apply BCs locally
-    if (xstart(2)==1) then
-      do k=1,xsize(3)
-      do i=1,xsize(1)
-         ! Horizontally-averaged formulation
-         if(iwallmodel==1) then
-           tauwallxy(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM_HAve))**two*ux_HAve*S_HAve
-           tauwallzy(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM_HAve))**two*uz_HAve*S_HAve
-         ! Local formulation
-         else
-           ux_delta=uxf1(i,wmnode+2,k)
-           uz_delta=uzf1(i,wmnode+2,k)
-           S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
-           if (iscalar==1) then
-             Phi_delta= phif1(i,wmnode+2,k) + Tstat_delta
-             do ii=1,10
-                if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
-                Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
-                if (istrat==0) then
-                  PsiM(i,k)=-4.8_mytype*delta/Obukhov(i,k)
-                  PsiH(i,k)=-7.8_mytype*delta/Obukhov(i,k)
-                else if (istrat==1) then
-                  zeta(i,k)=(one-sixteen*delta/Obukhov(i,k))**zptwofive
-                  PsiM(i,k)=two*log_prec(half*(one+zeta(i,k)))+log_prec(zpfive*(one+zeta(i,k)**2.))-two*atan_prec(zeta(i,k))+pi/two
-                  PsiH(i,k)=two*log_prec(half*(one+zeta(i,k)**two))
-                endif
-             enddo
-           endif
-
-           tauwallxy(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*ux_delta*S_delta
-           tauwallzy(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*uz_delta*S_delta
-         endif
-         if (ncly1==1) then
-           txy1(i,wmnode-1,k) = tauwallxy(i,k)
-           tyz1(i,wmnode-1,k) = tauwallzy(i,k)
-         elseif (ncly1==2) then
-           txy1(i,wmnode,k) = tauwallxy(i,k)
-           tyz1(i,wmnode,k) = tauwallzy(i,k)
-         endif 
-      enddo
-      enddo
-    endif
-
-    if (iwall==0) then
-      ! Derivative of wallmodel-corrected SGS stress tensor
-      call derx(dtwxydx,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
+    
+    if(iconserv==0) then
+      ! Construct Smag SGS stress tensor 
+      txy1 = -2.0*nut1*sxy1
+      tyz1 = -2.0*nut1*syz1
       call transpose_x_to_y(txy1,txy2)
       call transpose_x_to_y(tyz1,tyz2)
-      call dery_22(wallfluxx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
-      call dery_22(wallfluxz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+    endif
+
+    ! Define delta
+    if (iibm==0) then
+      if (istret==0) delta=3*dy
+      if (istret/=0) delta=yp(4)
+    else
+      if (istret==0) delta=1.5*dy
+    endif
+   
+    ! Work on Y-percil
+    call transpose_x_to_y(wmnode,wmnode2)
+    call transpose_x_to_y(ux1,ta2)
+    call transpose_x_to_y(uz1,tb2)
+    !if (iscalar==1) call transpose_x_to_y(phi1,tc2)
+ 
+    ! Apply BCs locally
+    do k=1,ysize(3)
+    do i=1,ysize(1)
+    do j=1,ysize(2)
+      if (iibm==0.and.j==2.or.iibm.ge.1.and.wmnode2(i,j,k)==one) then   
+         if (iibm==0) then
+           ux_delta=ta2(i,4,k)
+           uz_delta=tb2(i,4,k)
+           if (iscalar==1) Phi_delta= tc2(i,4,k)+Tstat_delta
+         else
+           ux_delta=half*(ta2(i,j,k)+ta2(i,j+1,k))
+           uz_delta=half*(tb2(i,j,k)+tb2(i,j+1,k))
+           if (iscalar==1) Phi_delta= half*(tc2(i,j+0,k)+tc2(i,j+1,k))+Tstat_delta
+         endif
+         S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
+         if (iscalar==1) then
+           do ii=1,10
+              if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
+              Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
+              if (istrat==0) then
+                PsiM(i,k)=-4.8_mytype*delta/Obukhov(i,k)
+                PsiH(i,k)=-7.8_mytype*delta/Obukhov(i,k)
+              else if (istrat==1) then
+                zeta(i,k)=(one-sixteen*delta/Obukhov(i,k))**zptwofive
+                PsiM(i,k)=two*log_prec(half*(one+zeta(i,k)))+log_prec(zpfive*(one+zeta(i,k)**2.))-two*atan_prec(zeta(i,k))+pi/two
+                PsiH(i,k)=two*log_prec(half*(one+zeta(i,k)**two))
+              endif
+           enddo
+         endif
+         tauwallxy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*ux_delta*S_delta
+         tauwallzy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*uz_delta*S_delta
+         if (ncly1==1) then
+           txy2(i,j-1,k) = tauwallxy2(i,k)
+           tyz2(i,j-1,k) = tauwallzy2(i,k)
+         elseif (ncly1==2) then
+           txy2(i,j,k) = tauwallxy2(i,k)
+           tyz2(i,j,k) = tauwallzy2(i,k)
+         endif
+         exit 
+      endif
+    enddo
+    enddo
+    enddo
+
+    if (iconserv==0) then
+      ! Derivative of wallmodel-corrected SGS stress tensor
+      call dery_22(wallsgsx2,txy2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+      call dery_22(wallsgsz2,tyz2,di2,sy,ffy,fsy,fwy,ppy,ysize(1),ysize(2),ysize(3),1,ubcy)
+      call transpose_y_to_x(wallsgsx2,wallsgsx1)
+      call transpose_y_to_x(wallsgsz2,wallsgsz1)
+      call derx(dtwxydx,txy1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0,ubcx)
       call transpose_y_to_z(tyz2,tyz3)
       call derz(dtwyzdz,tyz3,di3,sz,ffz,fsz,fwz,zsize(1),zsize(2),zsize(3),0,ubcz)
       call transpose_z_to_y(dtwyzdz,tb2)
       call transpose_y_to_x(tb2,tb1)
-      wallfluxy = dtwxydx + tb1
-      call transpose_y_to_x(wallfluxx2,wallfluxx)
-      call transpose_y_to_x(wallfluxz2,wallfluxz)
-    elseif (iwall==1) then
-      if (ncly1==1) then
-        wallfluxx(:,wmnode-1,:)=tauwallxy
-        wallfluxz(:,wmnode-1,:)=tauwallzy
-      elseif (ncly1==2) then
-        wallfluxx(:,wmnode,:)=tauwallxy
-        wallfluxz(:,wmnode,:)=tauwallzy
-      endif
+      wallsgsy1 = dtwxydx + tb1
+    else 
+      call transpose_y_to_x(txy2,wallsgsx1)
+      call transpose_y_to_x(tyz2,wallsgsz1)
     endif
-    ! Reset average values
-    PsiM_HAve_local=zero
-    PsiH_HAve_local=zero
-    L_HAve_local   =zero
-    Q_HAve_local   =zero
+    
 
-    ! Find horizontally averaged values
-    if (iscalar==1) then
-       do k=1,xsize(3)
-          do i=1,xsize(1)
+    ! Output averaged quantities at first off-ground point
+    if (ioutputabl==1) then
+    
+      ! Reset average values
+      ux_HAve_local  =zero
+      uz_HAve_local  =zero
+      
+      Phi_HAve_local =zero
+      PsiM_HAve_local=zero
+      PsiH_HAve_local=zero
+      L_HAve_local   =zero
+      Q_HAve_local   =zero
+    
+      if (nclx1==1.and.xend(1)==nx) then
+         xsize1=xsize(1)-1
+      else
+         xsize1=xsize(1)
+      endif
+      if (ncly1==1.and.xend(2)==ny) then
+         xsize2=xsize(2)-1
+      else
+         xsize2=xsize(2)
+      endif
+      if (nclz1==1.and.xend(3)==nz) then
+         xsize3=xsize(3)-1
+      else
+         xsize3=xsize(3)
+      endif
+      if (nclx1==1) then
+         nxc=nxm
+      else
+         nxc=nx
+      endif
+      if (ncly1==1) then
+         nyc=nym
+      else
+         nyc=ny
+      endif
+      if (nclz1==1) then
+         nzc=nzm
+      else
+         nzc=nz
+      endif
+      
+      do k=1,ysize(3)
+      do i=1,ysize(1)
+      do j=1,ysize(2)
+        if (iibm==0.and.j==2.or.iibm.ge.1.and.wmnode2(i,j,k)==one) then   
+          ux_HAve_local=ux_HAve_local+ta2(i,j,k)
+          uz_HAve_local=uz_HAve_local+tb2(i,j,k)
+          if (iscalar==1) then
+            Phi_HAve_local=Phi_HAve_local+tc2(i,j,k)
             PsiM_HAve_local=PsiM_HAve_local+PsiM(i,k)
             PsiH_HAve_local=PsiH_HAve_local+PsiH(i,k)
             L_HAve_local=L_HAve_local+Obukhov(i,k)
             Q_HAve_local=Q_HAve_local+heatflux(i,k)
-          enddo
-       enddo
-       PsiM_HAve_local=PsiM_HAve_local
-       PsiH_HAve_local=PsiH_HAve_local
-       L_HAve_local=L_HAve_local
-       Q_HAve_local=Q_HAve_local
-
-       call MPI_ALLREDUCE(PsiM_HAve_local,PsiM_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
-       call MPI_ALLREDUCE(PsiH_HAve_local,PsiH_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
-       call MPI_ALLREDUCE(L_HAve_local,L_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
-       call MPI_ALLREDUCE(Q_HAve_local,Q_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
-
-       PsiM_HAve=PsiM_HAve/(nxc*nzc)
-       PsiH_HAve=PsiH_HAve/(nxc*nzc)
-       L_HAve=L_HAve/(nxc*nzc)
-       Q_HAve=Q_HAve/(nxc*nzc)
-    endif
-    
-    ! Compute friction velocity u_shear and boundary layer height
-    u_shear=k_roughness*S_HAve/(log_prec(delta/z_zero)-PsiM_HAve)
-    if (iheight==1) call boundary_height(ux,uy,uz,dBL)
-    if (iscalar==1) zL=dBL/L_HAve
-
-    if (mod(itime,ilist)==0.and.nrank==0) then
-         write(*,*)  ' '
-         write(*,*)  ' ABL:'
-         write(*,*)  ' Horizontally-averaged velocity at y=delta: ', ux_HAve,uz_Have
-         write(*,*)  ' BL height: ', dBL
-         write(*,*)  ' Friction velocity: ', u_shear
-    
-        if (iscalar==1) then
-           write(*,*)  ' Temperature: ', Phi_HAve
-           write(*,*)  ' PsiM: ', PsiM_HAve
-           write(*,*)  ' PsiH: ', PsiH_HAve
-           write(*,*)  ' Obukhov L: ', L_HAve
-           write(*,*)  ' Heatflux: ', Q_HAve
-           write(*,*)  ' z/L: ', zL
+          endif
         endif
+      enddo
+      enddo
+      enddo
+      ux_HAve_local=ux_HAve_local
+      uz_HAve_local=uz_HAve_local
+      call MPI_ALLREDUCE(ux_HAve_local,ux_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+      call MPI_ALLREDUCE(uz_HAve_local,uz_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+      ux_HAve=ux_HAve/(nxc*nzc)
+      uz_HAve=uz_HAve/(nxc*nzc)
+      S_HAve=sqrt(ux_HAve**2.+uz_HAve**2.)
+      
+      if (iscalar==1) then
+        Phi_HAve_local=Phi_HAve_local
+        PsiM_HAve_local=PsiM_HAve_local
+        PsiH_HAve_local=PsiH_HAve_local
+        L_HAve_local=L_HAve_local
+        Q_HAve_local=Q_HAve_local
+        call MPI_ALLREDUCE(Phi_HAve_local,Phi_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+        call MPI_ALLREDUCE(PsiM_HAve_local,PsiM_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+        call MPI_ALLREDUCE(PsiH_HAve_local,PsiH_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+        call MPI_ALLREDUCE(L_HAve_local,L_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+        call MPI_ALLREDUCE(Q_HAve_local,Q_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+        Phi_HAve=Phi_HAve/(nxc*nzc)
+        if (ibuoyancy==1) then 
+          Tstat_delta =T_wall + (T_top-T_wall)*delta/yly
+        else 
+          Tstat_delta =zero
+        endif
+        Phi_HAve=Phi_HAve + Tstat_delta
+        PsiM_HAve=PsiM_HAve/(nxc*nzc)
+        PsiH_HAve=PsiH_HAve/(nxc*nzc)
+        L_HAve=L_HAve/(nxc*nzc)
+        Q_HAve=Q_HAve/(nxc*nzc)
+      endif
+ 
+      ! Compute friction velocity u_shear and boundary layer height
+      u_shear=k_roughness*S_HAve/(log_prec(delta/z_zero)-PsiM_HAve)
+      if (iheight==1) call boundary_height(ux1,uy1,uz1,dBL)
+      !if (iscalar==1) zL=dBL/L_HAve
+    
+      if (mod(itime,ilist)==0.and.nrank==0) then
+           write(*,*)  ' '
+           write(*,*)  ' ABL:'
+           write(*,*)  ' Horizontally-averaged velocity at y=delta: ', ux_HAve,uz_Have
+           write(*,*)  ' BL height: ', dBL
+           write(*,*)  ' Friction velocity: ', u_shear
+      
+          if (iscalar==1) then
+             write(*,*)  ' Temperature: ', Phi_HAve
+             write(*,*)  ' PsiM: ', PsiM_HAve
+             write(*,*)  ' PsiH: ', PsiH_HAve
+             write(*,*)  ' Obukhov L: ', L_HAve
+             write(*,*)  ' Heatflux: ', Q_HAve
+             write(*,*)  ' z/L: ', zL
+          endif
+     
+           write(*,*)  'Maximum wall shear stress for x and z', maxval(tauwallxy2), maxval(tauwallzy2)
+           write(*,*)  'Minimum wall shear stress for x and z', minval(tauwallxy2), minval(tauwallzy2)
+           if (iconserv==0) then
+             write(*,*)  'Max flux x and z ', maxval(wallsgsx1), maxval(wallsgsz1)
+             write(*,*)  'Min flux x and z ', minval(wallsgsx1), minval(wallsgsz1)
+           endif
+      endif
 
-         write(*,*)  'Maximum wall shear stress for x and z', maxval(tauwallxy), maxval(tauwallzy)
-         write(*,*)  'Minimum wall shear stress for x and z', minval(tauwallxy), minval(tauwallzy)
-         write(*,*)  'Max flux x and z ', maxval(wallfluxx), maxval(wallfluxz)
-         write(*,*)  'Min flux x and z ', minval(wallfluxx), minval(wallfluxz)
     endif
-
+    
     return
   end subroutine wall_sgs
 
@@ -683,9 +765,6 @@ contains
     integer :: j,i,k,code
     real(mytype) :: can,ut3,ut,ut4,xloc
     
-    real(mytype) :: hmax
-    hmax=62.5
-
     ut3=zero
     do k=1,ysize(3)
       do i=1,ysize(1)

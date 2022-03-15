@@ -10,7 +10,7 @@ module les
        turb_dir = "turb-data"
 contains
 
-  subroutine init_explicit_les
+  subroutine init_explicit_les()
     !================================================================================
     !
     !  SUBROUTINE: init_explicit_les
@@ -87,7 +87,7 @@ contains
   end subroutine finalise_explicit_les
   
   !************************************************************
-  subroutine Compute_SGS(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,ep1,iconservative)
+  subroutine Compute_SGS(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,ep1,wmnode)
     !================================================================================
     !
     !  SUBROUTINE: Compute_SGS
@@ -105,14 +105,11 @@ contains
     USE abl, only: wall_sgs
     implicit none
 
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, ep1
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, ep1, wmnode
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), numscalar) :: phi1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: sgsx1, sgsy1, sgsz1
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallfluxx1, wallfluxy1, wallfluxz1
-    integer :: iconservative
-    
-    integer :: wmnode
-    wmnode=6
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallsgsx1, wallsgsy1, wallsgsz1
+    integer :: i,j,k
 
     ! Calculate eddy-viscosity
     if(jles.eq.1) then ! Smagorinsky
@@ -126,34 +123,43 @@ contains
 
     endif
 
-    if(iconservative.eq.0) then ! Non-conservative form for calculating the divergence of the SGS stresses
+    if(iconserv.eq.0) then ! Non-conservative form for calculating the divergence of the SGS stresses
 
        call sgs_mom_nonconservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1,ep1)
-       !call sgs_scalar_nonconservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1,ep1)
 
-    elseif (iconservative.eq.1) then ! Conservative form for calculating the divergence of the SGS stresses (used with wall functions)
+    elseif (iconserv.eq.1) then ! Conservative form for calculating the divergence of the SGS stresses (used with wall functions)
 
        ! Call les_conservative
-       call sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1)
+       call sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode)
 
     endif
 
     ! SGS correction for ABL
-    if(itype.eq.itype_abl.and.iconservative.eq.0) then
-       call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallfluxx1,wallfluxy1,wallfluxz1)
-       if (xstart(2)==1) then
-          ! Free-slip bc
-          if(ncly1==1) then
-             sgsx1(:,wmnode-1,:) = -wallfluxx1(:,wmnode-1,:)
-             sgsy1(:,wmnode-1,:) = -wallfluxy1(:,wmnode-1,:)
-             sgsz1(:,wmnode-1,:) = -wallfluxz1(:,wmnode-1,:)
-          ! No-slip bc
-          elseif(ncly1==2) then
-             sgsx1(:,wmnode,:) = -wallfluxx1(:,wmnode,:)
-             sgsy1(:,wmnode,:) = -wallfluxy1(:,wmnode,:)
-             sgsz1(:,wmnode,:) = -wallfluxz1(:,wmnode,:)
-          endif
-       endif
+    if(itype.eq.itype_abl.and.iconserv.eq.0) then
+      call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
+      if (iibm==0.and.xstart(2)==1) then
+        if (ncly1==2) then 
+          sgsx1(:,2,:) = -wallsgsx1(:,2,:)
+          sgsy1(:,2,:) = -wallsgsy1(:,2,:)
+          sgsz1(:,2,:) = -wallsgsz1(:,2,:)
+        elseif (ncly1==1) then
+          sgsx1(:,1,:) = -wallsgsx1(:,1,:)
+          sgsy1(:,1,:) = -wallsgsy1(:,1,:)
+          sgsz1(:,1,:) = -wallsgsz1(:,1,:)
+        endif
+      elseif (iibm==1.or.iibm==2) then
+        do k=1,xsize(3)
+        do j=1,xsize(2)
+        do i=1,xsize(1)
+        if (wmnode(i,j,k)==one) then
+          sgsx1(i,j,k) = -wallsgsx1(i,j,k)
+          sgsy1(i,j,k) = -wallsgsy1(i,j,k)
+          sgsz1(i,j,k) = -wallsgsz1(i,j,k)
+        endif
+        enddo
+        enddo
+        enddo
+      endif
     endif
 
     return
@@ -198,8 +204,8 @@ contains
     integer :: i, j, k, ierr
     character(len = 30) :: filename
 
-    real(mytype) :: hmax
-    hmax=62.5
+    real(mytype)               :: xm,ym,zm,r
+    real(mytype)               :: yterrain,ywm
 
     ! INFO about the auxillary arrays
     !--------------------------------------------------------
@@ -270,14 +276,39 @@ contains
     do k = 1, ysize(3)
        do j = 1, ysize(2)
           do i = 1, ysize(1)
-             if(itype.eq.itype_abl) then
-                !Mason and Thomson damping coefficient
-                if (istret == 0) y=real(j+ystart(2)-1-1,mytype)*dy
-                if (istret /= 0) y=yp(j+ystart(2)-1)
-                smag_constant=(smagcst**(-nSmag)+(k_roughness*((y-hmax)/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
-                if (y.lt.hmax) then
-                   smag_constant=0
+             !Mason and Thomson damping coefficient
+             if(itype.eq.itype_abl.and.SmagWallDamp.eq.1) then
+                zm=real(k+ystart(3)-1-1,mytype)*dz
+                if (istret == 0) y=real(j-1,mytype)*dy
+                if (istret /= 0) y=yp(j)
+                xm=real(i+ystart(1)-1-1,mytype)*dx
+                if (iibm==0) then
+                   !Regular ABL
+                   yterrain=zero
+                elseif (iterrain==1) then
+                   !Flat terrain
+                   yterrain=hibm
+                elseif (iterrain==2) then
+                   !2D Hill
+                   r=abs(xm-chx)
+                   if (r.le.rad) then
+                      yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
+                   else
+                      yterrain=hibm
+                   endif
+                elseif (iterrain==3) then
+                   !3D Hill
+                   r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
+                   if (r.le.rad) then
+                      yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
+                   else
+                      yterrain=hibm
+                   endif
                 endif
+                smag_constant=(smagcst**(-nSmag)+(k_roughness*((y-yterrain)/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                !if (y.le.yterrain) then
+                !   smag_constant=0
+                !endif
                 length=smag_constant*del(j)
              else
                 length=smagcst*del(j)
@@ -1293,8 +1324,8 @@ end subroutine wale
 
   end subroutine sgs_scalar_nonconservative
 
-
-  subroutine sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1)
+  !************************************************************
+  subroutine sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode)
 
     USE param
     USE variables
@@ -1310,10 +1341,10 @@ end subroutine wale
 
     implicit none 
 
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, nut1, ep1
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, nut1, ep1, wmnode
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), numscalar) :: phi1 
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: sgsx1, sgsy1, sgsz1
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallfluxx1, wallfluxy1, wallfluxz1
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallsgsx1, wallsgsy1, wallsgsz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: txx1, txy1, txz1, tyy1, tyz1, tzz1 
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: taf1, tbf1, tcf1
     real(mytype), dimension(ysize(1), ysize(2), ysize(3)) :: txy2, txz2, tyy2, tyz2, tzz2 
@@ -1323,14 +1354,11 @@ end subroutine wale
 
     integer :: i, j, k
     
-    integer :: wmnode
-    wmnode=6
-
     if((iibm==1).or.(iibm==2)) then
        do k=1,xsize(3)
           do j=1,xsize(2)
              do i=1,xsize(1)
-                if(ep1(i,j, k).eq.1.and.j.ne.wmnode-1) then
+                if(ep1(i,j, k).eq.1) then
                    nut1(i,j,k) = zero
                 endif
              enddo
@@ -1345,26 +1373,41 @@ end subroutine wale
     tyy1 = 2.0*nut1*syy1
     tyz1 = 2.0*nut1*syz1
     tzz1 = 2.0*nut1*szz1   
-
+    
     ! Add wall model
-    if (itype.eq.itype_abl) then 
-      call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallfluxx1,wallfluxy1,wallfluxz1)
-      if (xstart(2)==1) then 
+    if (itype.eq.itype_abl) then
+      call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
+      if (iibm==0.and.xstart(2)==1) then
         if (ncly1==2) then 
-          txx1(:,wmnode,:) = 0.
-          txy1(:,wmnode,:) = - wallfluxx1(:,wmnode,:)! + txy1(:,2,:)
-          txz1(:,wmnode,:) = 0.
-          tyy1(:,wmnode,:) = 0.
-          tyz1(:,wmnode,:) = - wallfluxz1(:,wmnode,:)! + tyz1(:,2,:)
-          tzz1(:,wmnode,:) = 0.
+          txx1(:,2,:) = 0.
+          txy1(:,2,:) = - wallsgsx1(:,2,:)! txy1(:,2,:)
+          txz1(:,2,:) = 0.
+          tyy1(:,2,:) = 0.
+          tyz1(:,2,:) = - wallsgsz1(:,2,:)! tyz1(:,2,:)
+          tzz1(:,2,:) = 0.
         elseif (ncly1==1) then
-          txx1(:,wmnode-1,:) = 0.
-          txy1(:,wmnode-1,:) = - wallfluxx1(:,wmnode-1,:)! + txy1(:,1,:) 
-          txz1(:,wmnode-1,:) = 0.
-          tyy1(:,wmnode-1,:) = 0.
-          tyz1(:,wmnode-1,:) = - wallfluxz1(:,wmnode-1,:)! + tyz1(:,1,:) 
-          tzz1(:,wmnode-1,:) = 0.
+          txx1(:,1,:) = 0.
+          txy1(:,1,:) = - wallsgsx1(:,1,:)! txy1(:,1,:) 
+          txz1(:,1,:) = 0.
+          tyy1(:,1,:) = 0.
+          tyz1(:,1,:) = - wallsgsz1(:,1,:)! tyz1(:,1,:) 
+          tzz1(:,1,:) = 0.
         endif
+      elseif (iibm==1.or.iibm==2) then
+        do k=1,xsize(3)
+        do j=1,xsize(2)
+        do i=1,xsize(1)
+        if (wmnode(i,j,k)==one) then
+          txx1(i,j,k) = 0.
+          txy1(i,j,k) = - wallsgsx1(i,j,k)! txy1(i,j,k)
+          txz1(i,j,k) = 0.
+          tyy1(i,j,k) = 0.
+          tyz1(i,j,k) = - wallsgsz1(i,j,k)! tyz1(i,j,k)
+          tzz1(i,j,k) = 0.
+        endif
+        enddo
+        enddo
+        enddo
       endif
     endif
 
