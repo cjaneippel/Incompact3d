@@ -303,9 +303,135 @@ contains
       call fringe_region(ux,uy,uz)
     endif
 
+    if (nclx1.eq.2) then
+      if (iscalar.eq.0.or.(iscalar.eq.1.and.nclxS1.eq.2)) then
+        call inflow(ux,uy,uz,phi)
+      endif
+    endif
+
+    if (nclxn.eq.2) then
+      if (iscalar.eq.0.or.(iscalar.eq.1.and.nclxSn.eq.2)) then
+        call outflow(ux,uy,uz,phi)
+      endif
+    endif
+
     return
   end subroutine boundary_conditions_abl
 
+  !*******************************************************************************
+  !
+  subroutine inflow (ux,uy,uz,phi)
+  !
+  !*******************************************************************************
+  
+    USE param
+    USE variables
+    USE decomp_2d
+    USE MPI
+    USE var, only: ux_inflow, uy_inflow, uz_inflow
+  
+    implicit none
+  
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ux,uy,uz
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar) :: phi
+
+    real(mytype) :: um
+    integer :: i,j,k,itime_input
+    
+    um=0.5*(u1+u2)
+    do k=1,xsize(3)
+    do j=1,xsize(2)
+      bxx1(j,k)=um
+      bxy1(j,k)=zero
+      bxz1(j,k)=zero
+    enddo
+    enddo
+ 
+    if (iin.eq.1.or.iin.eq.2) then
+      call random_number(bxo)
+      call random_number(byo)
+      call random_number(bzo)
+
+      do k=1,xsize(3)
+      do j=1,xsize(2)
+        bxx1(j,k)=bxx1(j,k)+(two*bxo(j,k)-one)*inflow_noise*um
+        bxy1(j,k)=bxy1(j,k)+(two*byo(j,k)-one)*inflow_noise*um
+        bxz1(j,k)=bxz1(j,k)+(two*bzo(j,k)-one)*inflow_noise*um
+        if (iscalar.eq.1) then
+          phi(1,j,k,:)=one
+        endif
+      enddo
+      enddo
+    else if (iin.eq.3) then
+      ! Reading from files (when precursor simulations exist)
+      itime_input=mod(itime,ntimesteps)
+      if (itime_input==0) itime_input=ntimesteps
+      if (nrank==0) print *,'Reading inflow from a file, time step: ', itime_input
+      do k=1,xsize(3)
+      do j=1,xsize(2)
+        ! Case 1: Inflow is turbulence added to mean flow profile
+        !bxx1(j,k)=bxx1(j,k)+ux_inflow(itime_input,j,k)
+        !bxy1(j,k)=bxy1(j,k)+uy_inflow(itime_input,j,k)
+        !bxz1(j,k)=bxz1(j,k)+uz_inflow(itime_input,j,k)
+        ! Case 2: Inflow is full velocity field
+        bxx1(j,k)=ux_inflow(itime_input,j,k)
+        bxy1(j,k)=uy_inflow(itime_input,j,k)
+        bxz1(j,k)=uz_inflow(itime_input,j,k)
+      enddo
+      enddo
+    endif
+
+    return
+  end subroutine inflow 
+    
+  !*******************************************************************************
+  !
+  subroutine outflow (ux,uy,uz,phi)
+  !
+  !*******************************************************************************
+
+    USE param
+    USE variables
+    USE decomp_2d
+    USE MPI
+
+    implicit none
+
+    integer :: j,k,code
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ux,uy,uz
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar) :: phi
+    real(mytype) :: udx,udy,udz,uddx,uddy,uddz,cx,uxmin,uxmax,uxmin1,uxmax1
+
+    udx=one/dx; udy=one/dy; udz=one/dz; uddx=half/dx; uddy=half/dy; uddz=half/dz
+
+    uxmax=-1609.
+    uxmin=1609.
+    do k=1,xsize(3)
+      do j=1,xsize(2)
+        if (ux(nx-1,j,k).gt.uxmax) uxmax=ux(nx-1,j,k)
+        if (ux(nx-1,j,k).lt.uxmin) uxmin=ux(nx-1,j,k)
+      enddo
+    enddo
+
+    call MPI_ALLREDUCE(uxmax,uxmax1,1,real_type,MPI_MAX,MPI_COMM_WORLD,code)
+    call MPI_ALLREDUCE(uxmin,uxmin1,1,real_type,MPI_MIN,MPI_COMM_WORLD,code)
+
+    cx=0.5*(uxmax1+uxmin1)*gdt(itr)*udx
+    do k=1,xsize(3)
+      do j=1,xsize(2)
+        bxxn(j,k)=ux(nx,j,k)-cx*(ux(nx,j,k)-ux(nx-1,j,k))
+        bxyn(j,k)=uy(nx,j,k)-cx*(uy(nx,j,k)-uy(nx-1,j,k))
+        bxzn(j,k)=uz(nx,j,k)-cx*(uz(nx,j,k)-uz(nx-1,j,k))
+        if (iscalar.eq.1) then
+          phi(nx,j,k,:)=phi(nx,j,k,:)-cx*(phi(nx,j,k,:)-phi(nx-1,j,k,:))
+        endif
+      enddo
+    enddo
+
+    !if (nrank==0) write(*,*) "Outflow velocity ux nx=n min max=",real(uxmin1,4),real(uxmax1,4)
+
+    return
+  end subroutine outflow 
   !*******************************************************************************
   !
   subroutine momentum_forcing_abl(dux1,duy1,duz1,ux1,uy1,uz1,phi1)
@@ -585,6 +711,65 @@ contains
     endif
     
 
+    ! Reset average values
+    ux_HAve_local  =zero
+    uz_HAve_local  =zero
+    PsiM_HAve=zero  
+    if (nclx1==1.and.xend(1)==nx) then
+       xsize1=xsize(1)-1
+    else
+       xsize1=xsize(1)
+    endif
+    if (ncly1==1.and.xend(2)==ny) then
+       xsize2=xsize(2)-1
+    else
+       xsize2=xsize(2)
+    endif
+    if (nclz1==1.and.xend(3)==nz) then
+       xsize3=xsize(3)-1
+    else
+       xsize3=xsize(3)
+    endif
+    if (nclx1==1) then
+       nxc=nxm
+    else
+       nxc=nx
+    endif
+    if (ncly1==1) then
+       nyc=nym
+    else
+       nyc=ny
+    endif
+    if (nclz1==1) then
+       nzc=nzm
+    else
+       nzc=nz
+    endif
+    do k=1,ysize(3)
+    do i=1,ysize(1)
+    do j=1,ysize(2)
+      if (iibm==0.and.j==2.or.iibm.ge.1.and.wmnode2(i,j,k)==one) then   
+        ux_HAve_local=ux_HAve_local+half*(ta2(i,j,k)+ta2(i,j+1,k))
+        uz_HAve_local=uz_HAve_local+half*(tb2(i,j,k)+tb2(i,j+1,k))
+      endif
+    enddo
+    enddo
+    enddo
+    ux_HAve_local=ux_HAve_local
+    uz_HAve_local=uz_HAve_local
+    call MPI_ALLREDUCE(ux_HAve_local,ux_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+    call MPI_ALLREDUCE(uz_HAve_local,uz_HAve,1,real_type,MPI_SUM,MPI_COMM_WORLD,code)
+    ux_HAve=ux_HAve/(nxc*nzc)
+    uz_HAve=uz_HAve/(nxc*nzc)
+    S_HAve=sqrt(ux_HAve**2.+uz_HAve**2.)
+    
+    u_shear=k_roughness*S_HAve/(log_prec(delta/z_zero)-PsiM_HAve)
+    
+    if (nrank==0) then
+       write(42,'(20e20.12)') (itime-1)*dt,u_shear
+       call flush(42)
+    endif
+    
     ! Output averaged quantities at first off-ground point
     if (ioutputabl==1) then
     
