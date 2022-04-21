@@ -974,7 +974,7 @@ contains
 
     ! Flow rate for a logarithmic profile
     !can=-(ustar/k_roughness*yly*(log(yly/z_zero)-1.)-ut4)
-    can=-(ustar/k_roughness*((yly-hmax)*log(dBL/z_zero)-dBL)-ut4)
+    can=-(ustar/k_roughness*((yly-hibm)*log(dBL/z_zero)-dBL)-ut4)
 
     if (nrank==0.and.mod(itime,ilist)==0)  write(*,*) '# Rank ',nrank,'correction to ensure constant flow rate',ut4,can
 
@@ -985,7 +985,7 @@ contains
           continue
         else
           do j=1,ny
-            ux(i,j,k)=ux(i,j,k)-can/(yly-hmax)
+            ux(i,j,k)=ux(i,j,k)-can/(yly-hibm)
           enddo
         endif
       enddo
