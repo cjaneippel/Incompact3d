@@ -87,7 +87,7 @@ contains
   end subroutine finalise_explicit_les
   
   !************************************************************
-  subroutine Compute_SGS(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,ep1,wmnode)
+  subroutine Compute_SGS(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,ep1,wmnode,txy1)
     !================================================================================
     !
     !  SUBROUTINE: Compute_SGS
@@ -105,7 +105,7 @@ contains
     USE abl, only: wall_sgs
     implicit none
 
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, ep1, wmnode
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, ep1, wmnode, txy1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), numscalar) :: phi1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: sgsx1, sgsy1, sgsz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallsgsx1, wallsgsy1, wallsgsz1
@@ -130,7 +130,7 @@ contains
     elseif (iconserv.eq.1) then ! Conservative form for calculating the divergence of the SGS stresses (used with wall functions)
 
        ! Call les_conservative
-       call sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode)
+       call sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode,txy1)
 
     endif
 
@@ -147,7 +147,7 @@ contains
           sgsy1(:,1,:) = -wallsgsy1(:,1,:)
           sgsz1(:,1,:) = -wallsgsz1(:,1,:)
         endif
-      elseif (iibm==1.or.iibm==2) then
+      elseif (iibm==1.or.iibm==2.or.(iibm==3)) then
         do k=1,xsize(3)
         do j=1,xsize(2)
         do i=1,xsize(1)
@@ -305,7 +305,7 @@ contains
                       yterrain=hibm
                    endif
                 endif
-                smag_constant=(smagcst**(-nSmag)+(k_roughness*((y-yterrain)/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                smag_constant=(smagcst**(-nSmag)+(k_roughness*(abs(y-yterrain)/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
                 !if (y.le.yterrain) then
                 !   smag_constant=0
                 !endif
@@ -1325,7 +1325,7 @@ end subroutine wale
   end subroutine sgs_scalar_nonconservative
 
   !************************************************************
-  subroutine sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode)
+  subroutine sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode,txy1)
 
     USE param
     USE variables
@@ -1354,17 +1354,17 @@ end subroutine wale
 
     integer :: i, j, k
     
-    if((iibm==1).or.(iibm==2)) then
-       do k=1,xsize(3)
-          do j=1,xsize(2)
-             do i=1,xsize(1)
-                if(ep1(i,j, k).eq.1) then
-                   nut1(i,j,k) = zero
-                endif
-             enddo
-          enddo
-       enddo
-    endif
+   ! if((iibm==1).or.(iibm==2).or.(iibm==3)) then
+   !    do k=1,xsize(3)
+   !       do j=1,xsize(2)
+   !          do i=1,xsize(1)
+   !             if(ep1(i,j, k).eq.1) then
+   !                nut1(i,j,k) = zero
+   !             endif
+   !          enddo
+   !       enddo
+   !    enddo
+   ! endif
 
     ! Construct stress tensor
     txx1 = 2.0*nut1*sxx1
@@ -1393,7 +1393,7 @@ end subroutine wale
           tyz1(:,1,:) = - wallsgsz1(:,1,:)! tyz1(:,1,:) 
           tzz1(:,1,:) = 0.
         endif
-      elseif (iibm==1.or.iibm==2) then
+      elseif (iibm==1.or.iibm==2.or.(iibm==3)) then
         do k=1,xsize(3)
         do j=1,xsize(2)
         do i=1,xsize(1)
@@ -1483,19 +1483,19 @@ end subroutine wale
     call transpose_y_to_x(sgsy2, sgsy1)
     call transpose_y_to_x(sgsz2, sgsz1)
 
-    if((iibm==1).or.(iibm==2)) then
-       do k=1,xsize(3)
-          do j=1,xsize(2)
-             do i=1,xsize(1)
-                if(ep1(i,j, k).eq.1) then
-                   sgsx1(i,j,k) = zero
-                   sgsy1(i,j,k) = zero
-                   sgsz1(i,j,k) = zero
-                endif
-             enddo
-          enddo
-       enddo
-    endif
+   ! if((iibm==1).or.(iibm==2).or.(iibm==3)) then
+   !    do k=1,xsize(3)
+   !       do j=1,xsize(2)
+   !          do i=1,xsize(1)
+   !             if(ep1(i,j, k).eq.1) then
+   !                sgsx1(i,j,k) = zero
+   !                sgsy1(i,j,k) = zero
+   !                sgsz1(i,j,k) = zero
+   !             endif
+   !          enddo
+   !       enddo
+   !    enddo
+   ! endif
 
   end subroutine sgs_mom_v2
 

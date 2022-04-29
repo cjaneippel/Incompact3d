@@ -45,12 +45,12 @@ program xcompact3d
 
         if (imove.eq.1) then ! update epsi for moving objects
           if ((iibm.eq.2).or.(iibm.eq.3)) then
-             call genepsi3d(ep1)
+             call genepsi3d(ep1,wmnode)
           else if (iibm.eq.1) then
              call body(ux1,uy1,uz1,ep1)
           endif
         endif
-        call calculate_transeq_rhs(drho1,dux1,duy1,duz1,dphi1,rho1,ux1,uy1,uz1,ep1,phi1,divu3,wmnode)
+        call calculate_transeq_rhs(drho1,dux1,duy1,duz1,dphi1,rho1,ux1,uy1,uz1,ep1,phi1,divu3,wmnode,txy1)
 #ifdef DEBG
         call check_transients()
 #endif
@@ -80,9 +80,7 @@ program xcompact3d
      call restart(ux1,uy1,uz1,dux1,duy1,duz1,ep1,pp3(:,:,:,1),phi1,dphi1,px1,py1,pz1,rho1,drho1,mu1,1)
 
      call simu_stats(3)
-
      call postprocessing(rho1,ux1,uy1,uz1,pp3,phi1,ep1,txy1)
-
   enddo !! End time loop
 
   call finalise_xcompact3d()
@@ -192,7 +190,7 @@ subroutine init_xcompact3d()
   endif
 
   if ((iibm.eq.2).or.(iibm.eq.3)) then
-     call genepsi3d(ep1)
+     call genepsi3d(ep1,wmnode)
   else if (iibm.eq.1) then
      call epsi_init(ep1,wmnode)
      call body(ux1,uy1,uz1,ep1)
@@ -233,7 +231,7 @@ subroutine init_xcompact3d()
   end if
 
   if ((iibm.eq.2).or.(iibm.eq.3)) then
-     call genepsi3d(ep1)
+     call genepsi3d(ep1,wmnode)
   else if ((iibm.eq.1).or.(iibm.eq.3)) then
      call body(ux1,uy1,uz1,ep1)
   endif

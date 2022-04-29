@@ -86,7 +86,7 @@ contains
   end subroutine geomcomplex
 !############################################################################
 !############################################################################
-  subroutine genepsi3d(ep1)
+  subroutine genepsi3d(ep1,wmnode)
 
     USE variables, only : nx,ny,nz,nxm,nym,nzm,yp, ilist
     USE param, only : xlx,yly,zlz,dx,dy,dz,izap,npif,nclx,ncly,nclz,istret,itype,itype_sandbox
@@ -108,7 +108,7 @@ contains
     !*****************************************************************!
     !
     logical :: dir_exists
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ep1
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ep1,wmnode
     !
     if (nrank==0.and.mod(itime,ilist)==0) then
       write(*,*)'==========================================================='
@@ -136,7 +136,7 @@ contains
       call gene_epsi_3D(ep1,nx,ny,nz,dx,dy,dz,xlx,yly,zlz ,&
            nclx,ncly,nclz,nxraf,nyraf,nzraf   ,&
            xi,xf,yi,yf,zi,zf,nobjx,nobjy,nobjz,&
-           nobjmax,yp,nraf)
+           nobjmax,yp,nraf,wmnode)
       call verif_epsi(ep1,npif,izap,nx,ny,nz,nobjmax,&
            nxipif,nxfpif,nyipif,nyfpif,nzipif,nzfpif)
     endif
@@ -150,7 +150,7 @@ contains
   subroutine gene_epsi_3D(ep1,nx,ny,nz,dx,dy,dz,xlx,yly,zlz ,&
        nclx,ncly,nclz,nxraf,nyraf,nzraf   ,&
        xi,xf,yi,yf,zi,zf,nobjx,nobjy,nobjz,&
-       nobjmax,yp,nraf)
+       nobjmax,yp,nraf,wmnode)
     use param, only : zero,half, one, two
     use decomp_2d
     use MPI

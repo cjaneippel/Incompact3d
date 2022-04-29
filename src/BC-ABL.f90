@@ -13,7 +13,7 @@ contains
   !*******************************************************************************
 
     USE decomp_2d
-    use param, only : one, two, zero, pi
+    use param, only : one, two, zero, pi, ten
     use param, only : iterrain, hibm, hmax, rad, chx, chz, iibm
     USE var, only : uvisu
     USE param, only: ioutput, itime
@@ -31,7 +31,14 @@ contains
     real(mytype)               :: xm,ym,zm,r
     real(mytype)               :: yterrain,ywm
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: wmnode
+    real(mytype)               :: zeromach
 
+    zeromach=one
+    do while ((one + zeromach / two) .gt. one)
+       zeromach = zeromach/two
+    end do
+    zeromach = ten*zeromach
+    
     ! Intitialise epsi and wmnode
     epsi(:,:,:)=zero
     wmnode(:,:,:)=zero
@@ -63,14 +70,14 @@ contains
                    yterrain=hibm
                 endif
              endif
-             if (ym.le.yterrain) then
+             if (ym-yterrain.le.zeromach) then
                 epsi(i,j,k)=remp
              endif
           enddo
        enddo
     enddo
 
-    if((iibm==1).or.(iibm==2)) then
+    if (iibm==1.or.iibm==2.or.(iibm==3)) then
     ! Find wall model nodes
     do k=1,xsize(3)
        zm=real(k+xstart(3)-1-1,mytype)*dz
@@ -640,7 +647,7 @@ contains
       if (istret==0) delta=3*dy
       if (istret/=0) delta=yp(4)
     else
-      if (istret==0) delta=1.5*dy
+      if (istret==0) delta=1*dy
     endif
    
     ! Work on Y-percil
@@ -659,8 +666,8 @@ contains
            uz_delta=tb2(i,4,k)
            if (iscalar==1) Phi_delta= tc2(i,4,k)+Tstat_delta
          else
-           ux_delta=half*(ta2(i,j,k)+ta2(i,j+1,k))
-           uz_delta=half*(tb2(i,j,k)+tb2(i,j+1,k))
+           ux_delta=ta2(i,j,k)!half*(ta2(i,j,k)+ta2(i,j+1,k))
+           uz_delta=tb2(i,j,k)!half*(tb2(i,j,k)+tb2(i,j+1,k))
            if (iscalar==1) Phi_delta= half*(tc2(i,j+0,k)+tc2(i,j+1,k))+Tstat_delta
          endif
          S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
@@ -749,8 +756,8 @@ contains
     do i=1,ysize(1)
     do j=1,ysize(2)
       if (iibm==0.and.j==2.or.iibm.ge.1.and.wmnode2(i,j,k)==one) then   
-        ux_HAve_local=ux_HAve_local+half*(ta2(i,j,k)+ta2(i,j+1,k))
-        uz_HAve_local=uz_HAve_local+half*(tb2(i,j,k)+tb2(i,j+1,k))
+        ux_HAve_local=ux_HAve_local+ta2(i,j+4,k)
+        uz_HAve_local=uz_HAve_local+tb2(i,j+4,k)
       endif
     enddo
     enddo
@@ -763,7 +770,7 @@ contains
     uz_HAve=uz_HAve/(nxc*nzc)
     S_HAve=sqrt(ux_HAve**2.+uz_HAve**2.)
     
-    u_shear=k_roughness*S_HAve/(log_prec(delta/z_zero)-PsiM_HAve)
+    u_shear=k_roughness*S_HAve/(log_prec(5*dy/z_zero)-PsiM_HAve)
     
     if (nrank==0) then
        write(42,'(20e20.12)') (itime-1)*dt,u_shear
@@ -864,7 +871,7 @@ contains
       endif
  
       ! Compute friction velocity u_shear and boundary layer height
-      u_shear=k_roughness*S_HAve/(log_prec(delta/z_zero)-PsiM_HAve)
+      u_shear=k_roughness*S_HAve/(log_prec(dy/z_zero)-PsiM_HAve)
       if (iheight==1) call boundary_height(ux1,uy1,uz1,dBL)
       !if (iscalar==1) zL=dBL/L_HAve
     
