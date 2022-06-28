@@ -688,7 +688,7 @@ contains
     integer, intent(in) :: timestep
     integer :: j,k
 
-    if (nrank==0) print *, 'Appending outflow', timestep 
+    if (mod(itime,100)==0.and.nrank==0) print *, 'Appending outflow', timestep 
     do k=1,xsize(3)
     do j=1,xsize(2)
       ux_recoutflow(timestep,j,k)=ux(xend(1),j,k)

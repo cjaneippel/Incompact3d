@@ -373,7 +373,7 @@ contains
       ! Reading from files (when precursor simulations exist)
       itime_input=mod(itime,ntimesteps)
       if (itime_input==0) itime_input=ntimesteps
-      if (nrank==0) print *,'Reading inflow from a file, time step: ', itime_input
+      if (mod(itime,ilist)==0.and.nrank==0) print *,'Reading inflow from a file, time step: ', itime_input
       do k=1,xsize(3)
       do j=1,xsize(2)
         ! Case 1: Inflow is turbulence added to mean flow profile
@@ -588,6 +588,9 @@ contains
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallsgsx2,wallsgsz2,wmnode2
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
     
+    real(mytype)               :: xm,ym_samp,zm,r
+    real(mytype)               :: yterrain
+    
     ! Reset wall flux/stresses values
     wallsgsx1 = zero
     wallsgsy1 = zero
@@ -642,14 +645,6 @@ contains
       call transpose_x_to_y(tyz1,tyz2)
     endif
 
-    ! Define delta
-    if (iibm==0) then
-      if (istret==0) delta=3*dy
-      if (istret/=0) delta=yp(4)
-    else
-      if (istret==0) delta=1*dy
-    endif
-   
     ! Work on Y-percil
     call transpose_x_to_y(wmnode,wmnode2)
     call transpose_x_to_y(ux1,ta2)
@@ -662,13 +657,41 @@ contains
     do j=1,ysize(2)
       if (iibm==0.and.j==2.or.iibm.ge.1.and.wmnode2(i,j,k)==one) then   
          if (iibm==0) then
+           if (istret==0) delta=3*dy
+           if (istret/=0) delta=yp(4)
            ux_delta=ta2(i,4,k)
            uz_delta=tb2(i,4,k)
            if (iscalar==1) Phi_delta= tc2(i,4,k)+Tstat_delta
          else
-           ux_delta=ta2(i,j,k)!half*(ta2(i,j,k)+ta2(i,j+1,k))
-           uz_delta=tb2(i,j,k)!half*(tb2(i,j,k)+tb2(i,j+1,k))
-           if (iscalar==1) Phi_delta= half*(tc2(i,j+0,k)+tc2(i,j+1,k))+Tstat_delta
+           zm=real(k+ystart(3)-1-1,mytype)*dz
+           xm=real(i+ystart(1)-1-1,mytype)*dx
+           if (iterrain==1) then
+              !Flat terrain
+              yterrain=hibm
+           elseif (iterrain==2) then
+              !2D Hill
+              r=abs(xm-chx)
+              if (r.le.rad) then
+                 yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
+              else
+                 yterrain=hibm
+              endif
+           elseif (iterrain==3) then
+              !3D Hill
+              r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
+              if (r.le.rad) then
+                 yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
+              else
+                 yterrain=hibm
+              endif
+           endif
+           !sampling at aprox 1.0dy from wall
+           ym_samp=real(j-1,mytype)*dy!(real(j-1,mytype)*dy+real(j-2,mytype)*dy)/2
+           delta=ym_samp-yterrain
+
+           ux_delta=(ta2(i,j,k))
+           uz_delta=(tb2(i,j,k))
+           !if (iscalar==1) Phi_delta= half*(tc2(i,j,k)+tc2(i,j-1,k))+Tstat_delta
          endif
          S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
          if (iscalar==1) then
@@ -772,7 +795,7 @@ contains
     
     u_shear=k_roughness*S_HAve/(log_prec(5*dy/z_zero)-PsiM_HAve)
     
-    if (nrank==0) then
+    if (mod(itime,ilist)==0.and.nrank==0) then
        write(42,'(20e20.12)') (itime-1)*dt,u_shear
        call flush(42)
     endif

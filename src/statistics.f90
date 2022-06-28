@@ -73,7 +73,6 @@ contains
     use var, only : uvmean, uwmean
     use var, only : vwmean
     use var, only : phimean, phiphimean
-    use var, only : txymean
 
     implicit none
 
@@ -88,7 +87,6 @@ contains
     uvmean = zero
     uwmean = zero
     vwmean = zero
-    txymean = zero
     if (iscalar==1) then
       phimean = zero
       phiphimean = zero
@@ -159,7 +157,6 @@ contains
     use var, only : uvmean, uwmean
     use var, only : vwmean
     use var, only : phimean, phiphimean
-    use var, only : txymean
 
     implicit none
 
@@ -212,7 +209,7 @@ contains
     call read_or_write_one_stat(flag_read, gen_statname("uvmean"), uvmean)
     call read_or_write_one_stat(flag_read, gen_statname("uwmean"), uwmean)
     call read_or_write_one_stat(flag_read, gen_statname("vwmean"), vwmean)
-
+    
     if (iscalar==1) then
        do is=1, numscalar
           call read_or_write_one_stat(flag_read, gen_statname(filename), phimean(:,:,:,is))
@@ -286,7 +283,6 @@ contains
     use var, only : uvmean, uwmean
     use var, only : vwmean
     use var, only : phimean, phiphimean
-    use var, only : txymean
 
     implicit none
 
@@ -332,10 +328,6 @@ contains
     call update_variance_vector(uumean, vvmean, wwmean, uvmean, uwmean, vwmean, &
                                 ux1, uy1, uz1, ep1)
     
-    !! SGS stresses 
-    call update_average_scalar(txymean, txy1, ep1)
-
-
     !! Scalar statistics
     if (iscalar==1) then
        do is=1, numscalar

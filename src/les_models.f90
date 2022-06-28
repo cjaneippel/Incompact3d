@@ -87,7 +87,7 @@ contains
   end subroutine finalise_explicit_les
   
   !************************************************************
-  subroutine Compute_SGS(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,ep1,wmnode,txy1)
+  subroutine Compute_SGS(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,ep1,wmnode)
     !================================================================================
     !
     !  SUBROUTINE: Compute_SGS
@@ -105,7 +105,7 @@ contains
     USE abl, only: wall_sgs
     implicit none
 
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, ep1, wmnode, txy1
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, ep1, wmnode
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), numscalar) :: phi1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: sgsx1, sgsy1, sgsz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallsgsx1, wallsgsy1, wallsgsz1
@@ -130,7 +130,7 @@ contains
     elseif (iconserv.eq.1) then ! Conservative form for calculating the divergence of the SGS stresses (used with wall functions)
 
        ! Call les_conservative
-       call sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode,txy1)
+       call sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode)
 
     endif
 
@@ -1325,7 +1325,7 @@ end subroutine wale
   end subroutine sgs_scalar_nonconservative
 
   !************************************************************
-  subroutine sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode,txy1)
+  subroutine sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode)
 
     USE param
     USE variables
