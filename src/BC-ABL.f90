@@ -8,6 +8,48 @@ contains
 
   !*******************************************************************************
   !
+  real(mytype) function yterrain(xm,zm)
+  !
+  !*******************************************************************************
+
+    USE decomp_2d
+    use param, only : two, pi
+    use param, only : iterrain, hibm, hmax, rad, chx, chz
+    use dbg_schemes, only: sqrt_prec
+    use MPI
+
+    implicit none
+
+    real(mytype)               :: xm,zm,r
+    integer                    :: ierror,code
+
+    if (iterrain==1) then
+       !Flat terrain
+       yterrain=hibm
+    elseif (iterrain==2) then
+       !2D Hill
+       r=abs(xm-chx)
+       if (r.le.rad) then
+          yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
+       else
+          yterrain=hibm
+       endif
+    elseif (iterrain==3) then
+       !3D Hill
+       r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
+       if (r.le.rad) then
+          yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
+       else
+          yterrain=hibm
+       endif
+    else 
+       write(*,*)  'Simulation stopped: iterrain not supported'
+       call MPI_ABORT(MPI_COMM_WORLD,code,ierror); stop
+    endif
+  end function yterrain
+
+  !*******************************************************************************
+  !
   subroutine geomcomplex_abl(epsi,nxi,nxf,ny,nyi,nyf,nzi,nzf,dx,yp,dz,remp,wmnode)
   !
   !*******************************************************************************
@@ -29,7 +71,7 @@ contains
     real(mytype)               :: remp
     integer                    :: i,j,k
     real(mytype)               :: xm,ym,zm,r
-    real(mytype)               :: yterrain,ywm
+    real(mytype)               :: ywm
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: wmnode
     real(mytype)               :: zeromach
 
@@ -50,63 +92,23 @@ contains
           ym=yp(j)
           do i=nxi,nxf
              xm=real(i-1,mytype)*dx
-             if (iterrain==1) then
-                !Flat terrain
-                yterrain=hibm
-             elseif (iterrain==2) then
-                !2D Hill
-                r=abs(xm-chx)
-                if (r.le.rad) then
-                   yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
-                else
-                   yterrain=hibm
-                endif
-             elseif (iterrain==3) then
-                !3D Hill
-                r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
-                if (r.le.rad) then
-                   yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
-                else
-                   yterrain=hibm
-                endif
-             endif
-             if (ym-yterrain.le.zeromach) then
+             if (ym-yterrain(xm,zm).le.zeromach) then
                 epsi(i,j,k)=remp
              endif
           enddo
        enddo
     enddo
 
-    if (iibm==1.or.iibm==2.or.(iibm==3)) then
+    if (iibm.ge.1.or.iibm==2.or.iibm==3) then
     ! Find wall model nodes
     do k=1,xsize(3)
        zm=real(k+xstart(3)-1-1,mytype)*dz
        do i=1,xsize(1)
           xm=real(i-1,mytype)*dx
-          if (iterrain==1) then
-             !Flat terrain
-             yterrain=hibm
-          elseif (iterrain==2) then
-             !2D Hill
-             r=abs(xm-chx)
-             if (r.le.rad) then
-                yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
-             else
-                yterrain=hibm
-             endif
-          elseif (iterrain==3) then
-             !3D Hill
-             r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
-             if (r.le.rad) then
-                yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
-             else
-                yterrain=hibm
-             endif
-          endif
           do j=1,xsize(2)
              ym=yp(j+xstart(2)-1)
-             ywm=yterrain+yp(j+xstart(2))-ym
-             if (ym.gt.yterrain.and.ym.le.ywm) then
+             ywm=yterrain(xm,zm)+yp(j+xstart(2))-ym
+             if (ym.gt.yterrain(xm,zm).and.ym.le.ywm) then
                 wmnode(i,j,k)=one
                 exit
              endif
@@ -141,7 +143,6 @@ contains
     integer, dimension (:), allocatable :: seed
     
     real(mytype)               :: xm,zm,r
-    real(mytype)               :: yterrain
 
     ux1=zero
     uy1=zero
@@ -188,33 +189,10 @@ contains
        if (iPressureGradient.eq.1.or.imassconserve.eq.1) then
            do i=1,xsize(1)
                xm=real(i-1,mytype)*dx
-               if (iibm==0) then
-                  !Regular ABL
-                  yterrain=zero
-               elseif (iterrain==1) then
-                  !Flat terrain
-                  yterrain=hibm
-               elseif (iterrain==2) then
-                  !2D Hill
-                  r=abs(xm-chx)
-                  if (r.le.rad) then
-                     yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
-                  else
-                     yterrain=hibm
-                  endif
-               elseif (iterrain==3) then
-                  !3D Hill
-                  r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
-                  if (r.le.rad) then
-                     yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
-                  else
-                     yterrain=hibm
-                  endif
-               endif
-               if(y.le.yterrain) then
+               if(y.le.yterrain(xm,zm)) then
                    bxx1(j,k)=zero
                else
-                   bxx1(j,k)=ustar/k_roughness*log((abs(y-yterrain)+z_zero)/z_zero)
+                   bxx1(j,k)=ustar/k_roughness*log((abs(y-yterrain(xm,zm))+z_zero)/z_zero)
                endif
            enddo
        else
@@ -459,7 +437,6 @@ contains
     integer :: i,k
     
     real(mytype)               :: xm,zm,r
-    real(mytype)               :: yterrain
 
     ! BL Forcing (Pressure gradient or geostrophic wind)
     if (iPressureGradient==1) then
@@ -467,30 +444,8 @@ contains
        zm=real(k+xstart(3)-1-1,mytype)*dz
        do i=1,xsize(1)
            xm=real(i-1,mytype)*dx
-           if (iibm==0) then
-              !Regular ABL
-              yterrain=zero
-           elseif (iterrain==1) then
-              !Flat terrain
-              yterrain=hibm
-           elseif (iterrain==2) then
-              !2D Hill
-              r=abs(xm-chx)
-              if (r.le.rad) then
-                 yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
-              else
-                 yterrain=hibm
-              endif
-           elseif (iterrain==3) then
-              !3D Hill
-              r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
-              if (r.le.rad) then
-                 yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
-              else
-                 yterrain=hibm
-              endif
-           endif
-           dux1(i,:,k,1)=dux1(i,:,k,1)+ustar**2./(yly-yterrain)
+           dux1(i,:,k,1)=dux1(i,:,k,1)+ustar**2./(yly-yterrain(xm,zm))
+           !dux1(i,:,k,1)=dux1(i,:,k,1)+ustar**2./(dBL-yterrain(xm,zm))
        enddo
        enddo
        !if (iconcprec.eq.1) then
@@ -576,7 +531,7 @@ contains
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(out) :: wallsgsx1,wallsgsy1,wallsgsz1
     real(mytype),dimension(ysize(1),ysize(3)) :: tauwallxy2, tauwallzy2
     real(mytype),dimension(ysize(1),ysize(3)) :: Obukhov, zeta
-    integer :: i,j,k,ii,code
+    integer :: i,j,k,ii,code,j0
     integer :: nxc, nyc, nzc, xsize1, xsize2, xsize3
     real(mytype) :: delta
     real(mytype) :: ux_HAve_local, uz_HAve_local, Phi_HAve_local
@@ -588,13 +543,15 @@ contains
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallsgsx2,wallsgsz2,wmnode2
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
     
-    real(mytype)               :: xm,ym_samp,zm,r
-    real(mytype)               :: yterrain
+    real(mytype)               :: xm,y_sampling,y_wmn,zm,r
     
     ! Reset wall flux/stresses values
     wallsgsx1 = zero
     wallsgsy1 = zero
     wallsgsz1 = zero
+    
+    ! Set sampling distance for the wall model
+    delta=dsampling*dy
     
     ! Initialize stratification variables
     if (iscalar==1.and.ibuoyancy== 1) then 
@@ -652,76 +609,95 @@ contains
     !if (iscalar==1) call transpose_x_to_y(phi1,tc2)
  
     ! Apply BCs locally
+    ! Regular ABL
+    if (iibm==0) then
     do k=1,ysize(3)
     do i=1,ysize(1)
-    do j=1,ysize(2)
-      if (iibm==0.and.j==2.or.iibm.ge.1.and.wmnode2(i,j,k)==one) then   
-         if (iibm==0) then
-           if (istret==0) delta=3*dy
-           if (istret/=0) delta=yp(4)
-           ux_delta=ta2(i,4,k)
-           uz_delta=tb2(i,4,k)
-           if (iscalar==1) Phi_delta= tc2(i,4,k)+Tstat_delta
-         else
-           zm=real(k+ystart(3)-1-1,mytype)*dz
-           xm=real(i+ystart(1)-1-1,mytype)*dx
-           if (iterrain==1) then
-              !Flat terrain
-              yterrain=hibm
-           elseif (iterrain==2) then
-              !2D Hill
-              r=abs(xm-chx)
-              if (r.le.rad) then
-                 yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
-              else
-                 yterrain=hibm
-              endif
-           elseif (iterrain==3) then
-              !3D Hill
-              r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
-              if (r.le.rad) then
-                 yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
-              else
-                 yterrain=hibm
-              endif
+      !sampling at dsampling*dy from wall
+      j0=floor(delta/dy)
+      y_sampling=delta-real(j0,mytype)*dy
+      ux_delta=(1-y_sampling/dy)*ta2(i,j0+1,k)+(y_sampling/dy)*ta2(i,j0+2,k)
+      uz_delta=(1-y_sampling/dy)*tb2(i,j0+1,k)+(y_sampling/dy)*tb2(i,j0+2,k)
+      !if (iscalar==1) Phi_delta= (1-y_sampling/dy)*tc2(i,j+j0,k)+(y_sampling/dy)*tc2(i,j+j0+1,k)+Tstat_delta
+      S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
+      if (iscalar==1) then
+        do ii=1,10
+           if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
+           Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
+           if (istrat==0) then
+             PsiM(i,k)=-4.8_mytype*delta/Obukhov(i,k)
+             PsiH(i,k)=-7.8_mytype*delta/Obukhov(i,k)
+           else if (istrat==1) then
+             zeta(i,k)=(one-sixteen*delta/Obukhov(i,k))**zptwofive
+             PsiM(i,k)=two*log_prec(half*(one+zeta(i,k)))+log_prec(zpfive*(one+zeta(i,k)**2.))-two*atan_prec(zeta(i,k))+pi/two
+             PsiH(i,k)=two*log_prec(half*(one+zeta(i,k)**two))
            endif
-           !sampling at aprox 1.0dy from wall
-           ym_samp=real(j-1,mytype)*dy!(real(j-1,mytype)*dy+real(j-2,mytype)*dy)/2
-           delta=ym_samp-yterrain
-
-           ux_delta=(ta2(i,j,k))
-           uz_delta=(tb2(i,j,k))
-           !if (iscalar==1) Phi_delta= half*(tc2(i,j,k)+tc2(i,j-1,k))+Tstat_delta
-         endif
-         S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
-         if (iscalar==1) then
-           do ii=1,10
-              if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
-              Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
-              if (istrat==0) then
-                PsiM(i,k)=-4.8_mytype*delta/Obukhov(i,k)
-                PsiH(i,k)=-7.8_mytype*delta/Obukhov(i,k)
-              else if (istrat==1) then
-                zeta(i,k)=(one-sixteen*delta/Obukhov(i,k))**zptwofive
-                PsiM(i,k)=two*log_prec(half*(one+zeta(i,k)))+log_prec(zpfive*(one+zeta(i,k)**2.))-two*atan_prec(zeta(i,k))+pi/two
-                PsiH(i,k)=two*log_prec(half*(one+zeta(i,k)**two))
-              endif
-           enddo
-         endif
-         tauwallxy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*ux_delta*S_delta
-         tauwallzy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*uz_delta*S_delta
-         if (ncly1==1) then
-           txy2(i,j-1,k) = tauwallxy2(i,k)
-           tyz2(i,j-1,k) = tauwallzy2(i,k)
-         elseif (ncly1==2) then
-           txy2(i,j,k) = tauwallxy2(i,k)
-           tyz2(i,j,k) = tauwallzy2(i,k)
-         endif
-         exit 
+        enddo
+      endif
+      tauwallxy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*ux_delta*S_delta
+      tauwallzy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*uz_delta*S_delta
+      if (ncly1==1) then
+        txy2(i,1,k) = tauwallxy2(i,k)
+        tyz2(i,1,k) = tauwallzy2(i,k)
+      elseif (ncly1==2) then
+        txy2(i,2,k) = tauwallxy2(i,k)
+        tyz2(i,2,k) = tauwallzy2(i,k)
       endif
     enddo
     enddo
-    enddo
+    endif
+
+    ! Complex terrain
+    if (iibm.ge.1) then
+       do k=1,ysize(3)
+       do i=1,ysize(1)
+       do j=1,ysize(2)
+         if (wmnode2(i,j,k)==one) then   
+            zm=real(k+ystart(3)-1-1,mytype)*dz
+            xm=real(i+ystart(1)-1-1,mytype)*dx
+            !sampling at dsampling*dy from wall
+            y_wmn=real(j-1,mytype)*dy
+            y_sampling=yterrain(xm,zm)+delta-y_wmn
+            if (y_sampling.ge.0) then
+               j0=floor(y_sampling/dy)
+               y_sampling=y_sampling-real(j0,mytype)*dy
+               ux_delta=(1-y_sampling/dy)*ta2(i,j+j0,k)+(y_sampling/dy)*ta2(i,j+j0+1,k)
+               uz_delta=(1-y_sampling/dy)*tb2(i,j+j0,k)+(y_sampling/dy)*tb2(i,j+j0+1,k)
+            else
+               ux_delta=(1+y_sampling/(y_wmn-yterrain(xm,zm)))*ta2(i,j,k)
+               uz_delta=(1+y_sampling/(y_wmn-yterrain(xm,zm)))*tb2(i,j,k)
+            endif 
+            !if (iscalar==1) Phi_delta= half*(tc2(i,j,k)+tc2(i,j-1,k))+Tstat_delta
+            S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
+            if (iscalar==1) then
+              do ii=1,10
+                 if (itherm==1) heatflux(i,k)=-k_roughness**two*S_delta*(Phi_delta-(T_wall+TempRate*t))/((log_prec(delta/z_zero)-PsiM(i,k))*(log_prec(delta/z_zero)-PsiH(i,k)))
+                 Obukhov(i,k)=-(k_roughness*S_delta/(log_prec(delta/z_zero)-PsiM(i,k)))**three*Phi_delta/(k_roughness*gravv*heatflux(i,k))
+                 if (istrat==0) then
+                   PsiM(i,k)=-4.8_mytype*delta/Obukhov(i,k)
+                   PsiH(i,k)=-7.8_mytype*delta/Obukhov(i,k)
+                 else if (istrat==1) then
+                   zeta(i,k)=(one-sixteen*delta/Obukhov(i,k))**zptwofive
+                   PsiM(i,k)=two*log_prec(half*(one+zeta(i,k)))+log_prec(zpfive*(one+zeta(i,k)**2.))-two*atan_prec(zeta(i,k))+pi/two
+                   PsiH(i,k)=two*log_prec(half*(one+zeta(i,k)**two))
+                 endif
+              enddo
+            endif
+            tauwallxy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*ux_delta*S_delta
+            tauwallzy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)-PsiM(i,k)))**two*uz_delta*S_delta
+            if (ncly1==1) then
+              txy2(i,j-1,k) = tauwallxy2(i,k)
+              tyz2(i,j-1,k) = tauwallzy2(i,k)
+            elseif (ncly1==2) then
+              txy2(i,j,k) = tauwallxy2(i,k)
+              tyz2(i,j,k) = tauwallzy2(i,k)
+            endif
+            exit 
+         endif
+       enddo
+       enddo
+       enddo
+    endif
 
     if (iconserv==0) then
       ! Derivative of wallmodel-corrected SGS stress tensor
@@ -1148,8 +1124,8 @@ contains
       damp_lo = 300._mytype
       coeff   = 0.0016_mytype !0.5*ustar/dBL
     else
-      dheight = zpone*dBL
-      wvar    = fifteen !1./(1./k_roughness*(yly*log(yly/dBL)-yly+dBL)/(yly-dBL))
+      dheight = 0.5_mytype*dBL
+      wvar    = 5.0_mytype !1./(1./k_roughness*(yly*log(yly/dBL)-yly+dBL)/(yly-dBL))
       coeff   = wvar*ustar/dBL
     endif
 
@@ -1170,16 +1146,16 @@ contains
             duz1(i,j,k,1)=duz1(i,j,k,1)-coeff*lambda*(uz1(i,j,k)-UG(3))
           ! Damping for neutral ABL
           else
-            if (y>=(dBL+half*dheight)) then
+            if (y>=(dBL-half*dheight)) then
               lambda=one
-            elseif (y>=(dBL-half*dheight).and.y<(dBL+half*dheight)) then
+            elseif (y>=(dBL-dheight).and.y<(dBL-half*dheight)) then
               lambda=half*(one-cos_prec(pi*(y-(dBL-half*dheight))/dheight))
             else
              lambda=zero
             endif
             xloc=real(i-1,mytype)*dx
             if (iconcprec.eq.1.and.xloc.ge.pdl) lambda=0.
-            dux1(i,j,k,1)=dux1(i,j,k,1)-coeff*lambda*(ux1(i,j,k)-ustar/k_roughness*log_prec(dBL/z_zero))
+            dux1(i,j,k,1)=dux1(i,j,k,1)-coeff*lambda*(ux1(i,j,k)-4.37)
             duy1(i,j,k,1)=duy1(i,j,k,1)-coeff*lambda*(uy1(i,j,k)-UG(2))
             duz1(i,j,k,1)=duz1(i,j,k,1)-coeff*lambda*(uz1(i,j,k)-UG(3))
           endif

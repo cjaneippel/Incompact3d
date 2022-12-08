@@ -68,7 +68,8 @@ subroutine parameter(input_i3d)
   NAMELIST /ABL/ z_zero, k_roughness, ustar, dBL, &
        imassconserve, ibuoyancy, iPressureGradient, iCoriolis, CoriolisFreq, &
        istrat, idamping, iheight, TempRate, TempFlux, itherm, gravv, UG, T_wall, &
-       T_top, ishiftedper, iconcprec, pdl, iterrain, ioutputabl, hibm, hmax, rad, chx, chz 
+       T_top, ishiftedper, iconcprec, pdl, iterrain, ioutputabl, hibm, hmax, rad,&
+       chx, chz, dsampling
   NAMELIST /CASE/ tgv_twod, pfront
   NAMELIST/ALMParam/iturboutput,NTurbines,TurbinesPath,NActuatorlines,ActuatorlinesPath,eps_factor,rho_air
   NAMELIST/ADMParam/Ndiscs,ADMcoords,C_T,aind,iturboutput,rho_air
@@ -650,12 +651,12 @@ subroutine parameter_defaults()
   iturbine=0
   rho_air=one
   !! Complex Terrain
-  iterrain=1
   hibm=0.03125_mytype
   hmax=0.04_mytype
   rad=0.1_mytype
   chx=1.0625_mytype
   chz=1.0625_mytype
+  dsampling=1.0_mytype
   iterrain=0
 
   !! IO

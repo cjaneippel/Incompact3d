@@ -147,7 +147,7 @@ contains
           sgsy1(:,1,:) = -wallsgsy1(:,1,:)
           sgsz1(:,1,:) = -wallsgsz1(:,1,:)
         endif
-      elseif (iibm==1.or.iibm==2.or.(iibm==3)) then
+      elseif (iibm==1.or.iibm==2.or.iibm==3) then
         do k=1,xsize(3)
         do j=1,xsize(2)
         do i=1,xsize(1)
@@ -192,6 +192,7 @@ contains
     USE var, only : sxx3,syy3,szz3,sxy3,sxz3,syz3
     USE ibm_param
     use dbg_schemes, only: sqrt_prec
+    use abl, only : yterrain
 
     implicit none
 
@@ -205,7 +206,6 @@ contains
     character(len = 30) :: filename
 
     real(mytype)               :: xm,ym,zm,r
-    real(mytype)               :: yterrain,ywm
 
     ! INFO about the auxillary arrays
     !--------------------------------------------------------
@@ -282,31 +282,8 @@ contains
                 if (istret == 0) y=real(j-1,mytype)*dy
                 if (istret /= 0) y=yp(j)
                 xm=real(i+ystart(1)-1-1,mytype)*dx
-                if (iibm==0) then
-                   !Regular ABL
-                   yterrain=zero
-                elseif (iterrain==1) then
-                   !Flat terrain
-                   yterrain=hibm
-                elseif (iterrain==2) then
-                   !2D Hill
-                   r=abs(xm-chx)
-                   if (r.le.rad) then
-                      yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
-                   else
-                      yterrain=hibm
-                   endif
-                elseif (iterrain==3) then
-                   !3D Hill
-                   r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
-                   if (r.le.rad) then
-                      yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
-                   else
-                      yterrain=hibm
-                   endif
-                endif
-                smag_constant=(smagcst**(-nSmag)+(k_roughness*(abs(y-yterrain)/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
-                !if (y.le.yterrain) then
+                smag_constant=(smagcst**(-nSmag)+(k_roughness*(abs(y-yterrain(xm,zm))/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                !if (y.le.yterrain(xm,zm)) then
                 !   smag_constant=0
                 !endif
                 length=smag_constant*del(j)
