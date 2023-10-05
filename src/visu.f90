@@ -171,7 +171,7 @@ contains
     use decomp_2d, only : nrank
     use decomp_2d_io, only : decomp_2d_start_io
 
-    use param, only : nrhotime, ilmn, iscalar, ioutput, irestart, iibm, iturbine, ifirst
+    use param, only : nrhotime, ilmn, iscalar, ioutput, irestart, iibm, iturbine
 
     use variables, only : sx, cifip6, cisip6, ciwip6, cifx6, cisx6, ciwx6
     use variables, only : sy, cifip6y, cisip6y, ciwip6y, cify6, cisy6, ciwy6
@@ -236,13 +236,11 @@ contains
     call write_field(ux1, ".", "ux", num)
     call write_field(uy1, ".", "uy", num)
     call write_field(uz1, ".", "uz", num)
-    if(itime==ifirst) then
-       if (iibm.ne.0) then
-          call write_field(ep1, ".", "epsi", num,.true.)
-       endif
-       if (iturbine.eq.2) then
-          call write_field(sum(GammaDisc(:,:,:,:),dim=4), ".", "GammaDiscs", num,.true.)
-       endif
+    if (iibm.ne.0) then
+       call write_field(ep1, ".", "epsi", num,.true.)
+    endif
+    if (iturbine.eq.2) then
+       call write_field(sum(GammaDisc(:,:,:,:),dim=4), ".", "GammaDiscs", num,.true.)
     endif
     ! Interpolate pressure
     !WORK Z-PENCILS
@@ -359,6 +357,8 @@ contains
     integer :: i,k
     real(mytype) :: xp(xszV(1)), zp(zszV(3))
 
+    character(len=:), allocatable :: fmt
+    
     if (nrank.eq.0) then
       OPEN(newunit=ioxdmf,file="./data/"//gen_snapshotname(pathname, filename, num, "xdmf"))
 
@@ -366,6 +366,7 @@ contains
       write(ioxdmf,*)'<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>'
       write(ioxdmf,*)'<Xdmf xmlns:xi="http://www.w3.org/2001/XInclude" Version="2.0">'
       write(ioxdmf,*)'<Domain>'
+      call write_xdmf_topo()
       if (istret.ne.0) then
         do i=1,xszV(1)
           xp(i) = real(i-1,mytype)*dx*nvisu
@@ -373,17 +374,6 @@ contains
         do k=1,zszV(3)
           zp(k) = real(k-1,mytype)*dz*nvisu
         enddo
-        write(ioxdmf,*)'    <Topology name="topo" TopologyType="3DRectMesh"'
-        if (output2D.eq.0) then
-          write(ioxdmf,*)'        Dimensions="',zszV(3),yszV(2),xszV(1),'">'
-        else if (output2D.eq.1) then
-          write(ioxdmf,*)'        Dimensions="',zszV(3),yszV(2),1,'">'
-        else if (output2D.eq.2) then
-          write(ioxdmf,*)'        Dimensions="',zszV(3),1,xszV(1),'">'
-        else if (output2D.eq.3) then
-          write(ioxdmf,*)'        Dimensions="',1,yszV(2),xszV(1),'">'
-        endif
-        write(ioxdmf,*)'    </Topology>'
         write(ioxdmf,*)'    <Geometry name="geo" Type="VXVYVZ">'
         if (output2D.ne.1) then
           write(ioxdmf,*)'        <DataItem Dimensions="',xszV(1),'" NumberType="Float" Precision="4" Format="XML">'
@@ -411,17 +401,6 @@ contains
         write(ioxdmf,*)'        </DataItem>'
         write(ioxdmf,*)'    </Geometry>'
       else
-        write(ioxdmf,*)'    <Topology name="topo" TopologyType="3DCoRectMesh"'
-        if (output2D.eq.0) then
-          write(ioxdmf,*)'        Dimensions="',zszV(3),yszV(2),xszV(1),'">'
-        else if (output2D.eq.1) then
-          write(ioxdmf,*)'        Dimensions="',zszV(3),yszV(2),1,'">'
-        else if (output2D.eq.2) then
-          write(ioxdmf,*)'        Dimensions="',zszV(3),1,xszV(1),'">'
-        else if (output2D.eq.3) then
-          write(ioxdmf,*)'        Dimensions="',1,yszV(2),xszV(1),'">'
-        endif
-        write(ioxdmf,*)'    </Topology>'
         write(ioxdmf,*)'    <Geometry name="geo" Type="ORIGIN_DXDYDZ">'
         write(ioxdmf,*)'        <!-- Origin -->'
         write(ioxdmf,*)'        <DataItem Format="XML" Dimensions="3">'
@@ -429,14 +408,19 @@ contains
         write(ioxdmf,*)'        </DataItem>'
         write(ioxdmf,*)'        <!-- DxDyDz -->'
         write(ioxdmf,*)'        <DataItem Format="XML" Dimensions="3">'
+        if (mytype == kind(0.0d0)) then
+           fmt = "(A, E24.17, A, E24.17, A, E24.17)"
+        else
+           fmt = "(A, E16.9, A, E16.9, A, E16.9)"
+        end if
         if (output2D.eq.0) then
-          write(ioxdmf,*)'        ',nvisu*dz,nvisu*dy,nvisu*dx
+          write(ioxdmf,fmt)'        ',nvisu*dz," ",nvisu*dy," ",nvisu*dx
         else if (output2D.eq.1) then
-          write(ioxdmf,*)'        ',dz,dy,1.
+          write(ioxdmf,fmt)'        ',dz," ",dy," ",1.
         else if (output2D.eq.2) then
-          write(ioxdmf,*)'        ',dz,1.,dx
+          write(ioxdmf,fmt)'        ',dz," ",1.," ",dx
         else if (output2D.eq.3) then
-          write(ioxdmf,*)'        ',1.,dy,dx
+          write(ioxdmf,fmt)'        ',1.," ",dy," ",dx
         endif
         write(ioxdmf,*)'        </DataItem>'
         write(ioxdmf,*)'    </Geometry>'
@@ -447,6 +431,37 @@ contains
     endif
   end subroutine write_xdmf_header
 
+  subroutine write_xdmf_topo()
+
+    use decomp_2d, only : xszV, yszV, zszV
+    use param, only : istret
+    
+    implicit none
+
+    character(len=:), allocatable :: topo_type
+    character(len=:), allocatable :: fmt
+    
+    if (istret /= 0) then
+       topo_type = "3DRectMesh"
+    else
+       topo_type = "3DCoRectMesh"
+    end if
+    
+    write(ioxdmf,'(A)')'    <Topology name="topo" TopologyType="'//topo_type//'"'
+
+    fmt = "(A, I0, A, I0, A, I0, A)"
+    if (output2D.eq.0) then
+       write(ioxdmf,fmt)'        Dimensions="',zszV(3)," ",yszV(2)," ",xszV(1),'">'
+    else if (output2D.eq.1) then
+       write(ioxdmf,fmt)'        Dimensions="',zszV(3)," ",yszV(2)," ",1,'">'
+    else if (output2D.eq.2) then
+       write(ioxdmf,fmt)'        Dimensions="',zszV(3)," ",1," ",xszV(1),'">'
+    else if (output2D.eq.3) then
+       write(ioxdmf,fmt)'        Dimensions="',1," ",yszV(2)," ",xszV(1),'">'
+    endif
+    write(ioxdmf,'(A)')'    </Topology>'
+  end subroutine write_xdmf_topo
+  
   !
   ! Write the footer of the XDMF file
   ! Adapted from https://github.com/fschuch/Xcompact3d/blob/master/src/visu.f90
@@ -495,6 +510,9 @@ contains
     
     integer :: ierr
 
+    integer :: precision
+    character(len=:), allocatable :: fmt
+    
 #ifndef ADIOS2
     mpiio = .true.
 #else
@@ -515,29 +533,35 @@ contains
 #else
           write(ioxdmf,*)'           <DataItem Format="HDF"'
 #endif
+
 #ifdef DOUBLE_PREC
 #ifdef SAVE_SINGLE
           if (output2D.eq.0) then
-             write(ioxdmf,*)'            DataType="Float" Precision="4" Endian="little" Seek="0"'
+             precision = 4
           else
-             write(ioxdmf,*)'            DataType="Float" Precision="8" Endian="little" Seek="0"'
+             precision = 8
           endif
 #else
-          write(ioxdmf,*)'            DataType="Float" Precision="8" Endian="little" Seek="0"'
+          precision = 8
 #endif
 #else
-          write(ioxdmf,*)'            DataType="Float" Precision="4" Endian="little" Seek="0"'
+          precision = 4
 #endif
+          write(ioxdmf,"(A,I0,A)")'            DataType="Float" Precision="', precision, '" Endian="little" Seek="0"'
+
+          fmt = "(A, I0, A, I0, A, I0, A)"
           if (output2D.eq.0) then
-             write(ioxdmf,*)'            Dimensions="',zszV(3),yszV(2),xszV(1),'">'
+             write(ioxdmf,fmt)'            Dimensions="',zszV(3)," ",yszV(2)," ",xszV(1),'">'
           else if (output2D.eq.1) then
-             write(ioxdmf,*)'            Dimensions="',zszV(3),yszV(2),1,'">'
+             write(ioxdmf,fmt)'            Dimensions="',zszV(3)," ",yszV(2)," ",1,'">'
           else if (output2D.eq.2) then
-             write(ioxdmf,*)'            Dimensions="',zszV(3),1,xszV(1),'">'
+             write(ioxdmf,fmt)'            Dimensions="',zszV(3)," ",1," ",xszV(1),'">'
           else if (output2D.eq.3) then
-             write(ioxdmf,*)'            Dimensions="',1,yszV(2),xszV(1),'">'
+             write(ioxdmf,fmt)'            Dimensions="',1," ",yszV(2)," ",xszV(1),'">'
           endif
+
           write(ioxdmf,*)'              '//gen_h5path(gen_filename(pathname, filename, num, 'bin'), num)
+
           write(ioxdmf,*)'           </DataItem>'
           write(ioxdmf,*)'        </Attribute>'
        endif
@@ -606,9 +630,15 @@ contains
     
   end function gen_h5path
 
+  ! Function converting an integer to a string.
   function int_to_str(i)
-    integer, intent(in) :: i
-    character(len=(1 + int(log10(real(i))))) :: int_to_str
+
+    integer, intent(in) :: i ! Integer input.
+
+    ! String return value. The string must be long enough to contain all the characters required to
+    ! represent the integer, i.e 1 + log_10(i). To protect against calling with integer 0 the value
+    ! passed to log_10 must be >= 1.
+    character(len=(1 + int(log10(real(max(i, 1)))))) :: int_to_str
 
     write(int_to_str, "(I0)") i
   end function int_to_str

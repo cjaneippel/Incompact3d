@@ -26,7 +26,6 @@ module var
   real(mytype), save, allocatable, dimension(:,:,:,:,:) :: dphi1
   real(mytype), save, allocatable, dimension(:,:,:) :: mu1,mu2,mu3
   real(mytype), save, allocatable, dimension(:,:,:) :: uxf1, uxf2, uxf3, uyf1, uyf2, uyf3, uzf1, uzf2, uzf3, phif1, phif2, phif3
-  real(mytype), save, allocatable, dimension(:,:,:) :: txy1
 
   !arrays for post processing
   real(mytype), save, allocatable, dimension(:,:,:) :: f1,fm1
@@ -71,6 +70,7 @@ module var
   ! working arrays for ABL
   real(mytype), save, allocatable, dimension(:,:) :: heatflux
   real(mytype), save, allocatable, dimension(:,:,:) :: wmnode
+  real(mytype), save, allocatable, dimension(:,:,:,:) :: abl_T
 
   ! arrays for turbine modelling
   real(mytype), save, allocatable, dimension(:,:,:) :: FTx, FTy, FTz, Fdiscx, Fdiscy, Fdiscz
@@ -132,8 +132,6 @@ contains
     diss1 = zero
     call alloc_x(pre1, opt_global=.true.) !global indices
     pre1 = zero
-    call alloc_x(txy1, opt_global=.true.) !global indices
-    txy1 = zero
 
     allocate(phi1(xstart(1):xend(1),xstart(2):xend(2),xstart(3):xend(3),1:numscalar)) !global indices
     phi1 = zero
@@ -161,7 +159,7 @@ contains
     call alloc_x(ep1)
     ep1 = zero
     if (ilmn) then
-      call alloc_x(mu1, opt_global=.true.)
+      call alloc_x(mu1)
       mu1 = one
     endif
 
@@ -1308,16 +1306,20 @@ contains
     dphi1=zero
     
     !! ABL
-    allocate(heatflux(ysize(1),ysize(3)))
+    allocate(heatflux(xsize(1),xsize(3)))
     heatflux = zero
-    allocate(PsiM(ysize(1),ysize(3)))
+    allocate(PsiM(xsize(1),xsize(3)))
     PsiM = zero
-    allocate(PsiH(ysize(1),ysize(3)))
+    allocate(PsiH(xsize(1),xsize(3)))
     PsiH = zero
-    allocate(Tstat(ysize(2),1))
+    allocate(Tstat(xsize(2),1))
     Tstat = zero
     allocate(wmnode(xsize(1),xsize(2),xsize(3)))
     wmnode=zero
+    if (itype.eq.itype_abl.and.ibuoyancy.eq.1) then
+       allocate(abl_T(xsize(1),xsize(2),xsize(3),numscalar))
+       abl_T = zero
+    endif
 
     !! Turbine Modelling
     if (iturbine.eq.1) then
@@ -1342,7 +1344,7 @@ contains
     if (.not.ilmn) then
        nrhotime = 1 !! Save some space
     endif
-    allocate(rho1(xstart(1):xend(1),xstart(2):xend(2),xstart(3):xend(3),nrhotime)) !Need to store old density values to extrapolate drhodt
+    allocate(rho1(xsize(1),xsize(2),xsize(3),nrhotime)) !Need to store old density values to extrapolate drhodt
     rho1=one
     call alloc_y(rho2)
     rho2=zero

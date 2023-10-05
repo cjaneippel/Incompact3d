@@ -80,7 +80,7 @@ program xcompact3d
      call restart(ux1,uy1,uz1,dux1,duy1,duz1,ep1,pp3(:,:,:,1),phi1,dphi1,px1,py1,pz1,rho1,drho1,mu1,1)
 
      call simu_stats(3)
-     call postprocessing(rho1,ux1,uy1,uz1,pp3,phi1,ep1,txy1)
+     call postprocessing(rho1,ux1,uy1,uz1,pp3,phi1,ep1)
   enddo !! End time loop
 
   call finalise_xcompact3d()

@@ -15,12 +15,13 @@ module case
   use dbg_schemes
   use channel
   use mixlayer
-  use jet
   use lockexch
   use tbl
   use abl
   use uniform
   use sandbox
+  use cavity
+  use pipe
 
   use var, only : nzmsize
 
@@ -37,6 +38,7 @@ contains
   !##################################################################
   subroutine init (rho1, ux1, uy1, uz1, ep1, phi1, drho1, dux1, duy1, duz1, dphi1, &
        pp3, px1, py1, pz1)
+
 
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ux1,uy1,uz1,ep1
     real(mytype),dimension(xsize(1),xsize(2),xsize(3),nrhotime) :: rho1
@@ -90,10 +92,10 @@ contains
 
        call init_mixlayer(rho1, ux1, uy1, uz1)
 
-    elseif (itype.eq.itype_jet) then
-
-       call init_jet(rho1, ux1, uy1, uz1, ep1, phi1)
-
+!!!    elseif (itype.eq.itype_jet) then
+!!!
+!!!       call init_jet(rho1, ux1, uy1, uz1, ep1, phi1)
+!!!
     elseif (itype.eq.itype_tbl) then
 
        call init_tbl (ux1, uy1, uz1, ep1, phi1)
@@ -109,6 +111,14 @@ contains
     elseif (itype.EQ.itype_sandbox) THEN
    
        call init_sandbox (ux1, uy1, uz1, ep1, phi1, 0)
+
+    elseif (itype.eq.itype_cavity) then
+
+       call init_cavity(ux1, uy1, uz1, ep1, phi1)
+
+    elseif (itype.eq.itype_pipe) then
+
+       call init_pipe(ux1, uy1, uz1, ep1, phi1)
 
     else
   
@@ -174,10 +184,10 @@ contains
 
        call boundary_conditions_dbg (ux, uy, uz, phi)
 
-    elseif (itype.eq.itype_jet) then
-
-       call boundary_conditions_jet (rho,ux,uy,uz,phi)
-
+!!!    elseif (itype.eq.itype_jet) then
+!!!
+!!!       call boundary_conditions_jet (rho,ux,uy,uz,phi)
+!!!
     elseif (itype.eq.itype_tbl) then
 
        call boundary_conditions_tbl (ux, uy, uz, phi)
@@ -193,6 +203,14 @@ contains
     elseif (itype.EQ.itype_sandbox) THEN
    
        call boundary_conditions_sandbox (ux, uy, uz, phi)
+
+    elseif (itype.eq.itype_cavity) then
+
+       call boundary_conditions_cavity(ux, uy, uz, phi)
+
+    elseif (itype.eq.itype_pipe) then
+
+       call boundary_conditions_pipe (ux, uy, uz, phi)
 
     endif
 
@@ -217,12 +235,38 @@ contains
 
     !call write_snapshot(rho1, ux1, uy1, uz1, pp3, phi1, ep1, itime)
     !call postprocess_case(rho1, ux1, uy1, uz1, pp3, phi1, ep1)
-    !call overall_statistic(ux1, uy1, uz1, phi1, pp3, ep1,txy1)
+    !call overall_statistic(ux1, uy1, uz1, phi1, pp3, ep1)
 
   end subroutine preprocessing
   !##################################################################
   !##################################################################
-  subroutine postprocessing(rho1, ux1, uy1, uz1, pp3, phi1, ep1, txy1)
+  subroutine postprocessing(rho1, ux1, uy1, uz1, pp3, phi1, ep1)
+
+    use decomp_2d, only : mytype, xsize, ph1
+    use var, only : nzmsize, numscalar, nrhotime, npress, abl_T
+
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)), intent(in) :: ux1, uy1, uz1
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar), intent(in) :: phi1
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3),nrhotime), intent(in) :: rho1
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)), intent(in) :: ep1
+    real(mytype),dimension(ph1%zst(1):ph1%zen(1), ph1%zst(2):ph1%zen(2), nzmsize, npress), intent(in) :: pp3
+
+    integer :: j
+
+    ! Recover temperature when decomposed (pressure to be recovered externally)
+    if (itype.eq.itype_abl.and.ibuoyancy.eq.1) then
+      do j=1,xsize(2) 
+        abl_T(:,j,:,1) = phi1(:,j,:,1) + Tstat(j,1)
+      enddo
+      call run_postprocessing(rho1, ux1, uy1, uz1, pp3, abl_T, ep1)
+    else
+      call run_postprocessing(rho1, ux1, uy1, uz1, pp3, phi1, ep1)
+    endif
+
+  end subroutine postprocessing
+  !##################################################################
+  !##################################################################
+  subroutine run_postprocessing(rho1, ux1, uy1, uz1, pp3, phi1, ep1)
 
     use decomp_2d, only : mytype, xsize, ph1
     use visu, only  : write_snapshot, end_snapshot
@@ -240,36 +284,22 @@ contains
     real(mytype),dimension(xsize(1),xsize(2),xsize(3),nrhotime), intent(in) :: rho1
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)), intent(in) :: ep1
     real(mytype),dimension(ph1%zst(1):ph1%zen(1), ph1%zst(2):ph1%zen(2), nzmsize, npress), intent(in) :: pp3
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3)), intent(in) :: txy1
 
-    integer :: j
     integer :: num
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar) :: T ! FIXME This can be huge
-
-    T = zero
-
-    ! Recover temperature when decomposed (pressure to be recovered externally)
-    if (itype.eq.itype_abl.and.ibuoyancy.eq.1) then
-      do j=1,xsize(2) 
-        T(:,j,:,1) = phi1(:,j,:,1) + Tstat(j,1)
-      enddo
-    else
-      T = phi1
-    endif
 
     if ((ivisu.ne.0).and.(mod(itime, ioutput).eq.0)) then
-       call write_snapshot(rho1, ux1, uy1, uz1, pp3, T, ep1, itime, num)
+       call write_snapshot(rho1, ux1, uy1, uz1, pp3, phi1, ep1, itime, num)
 
        ! XXX: Ultimate goal for ADIOS2 is to pass do all postproc online - do we need this?
        !      Currently, needs some way to "register" variables for IO
-       call visu_case(rho1, ux1, uy1, uz1, pp3, T, ep1, num)
+       call visu_case(rho1, ux1, uy1, uz1, pp3, phi1, ep1, num)
 
        call end_snapshot(itime, num)
     end if
 
-    call postprocess_case(rho1, ux1, uy1, uz1, pp3, T, ep1)
+    call postprocess_case(rho1, ux1, uy1, uz1, pp3, phi1, ep1)
 
-    call overall_statistic(ux1, uy1, uz1, T, pp3, ep1, txy1)
+    call overall_statistic(ux1, uy1, uz1, phi1, pp3, ep1)
 
     if (iturbine.ne.0) then 
       call turbine_output()
@@ -277,7 +307,7 @@ contains
 
     call write_probes(ux1, uy1, uz1, pp3, phi1)
 
-  end subroutine postprocessing
+  end subroutine run_postprocessing
   !##################################################################
   !##################################################################
   subroutine postprocess_case(rho,ux,uy,uz,pp,phi,ep)
@@ -310,7 +340,7 @@ contains
 
     elseif (itype.eq.itype_hill) then
 
-       call postprocess_hill(ux, uy, uz, phi, ep)
+       call postprocess_hill(ux, uy, uz, pp, phi, ep)
 
     elseif (itype.eq.itype_cyl) then
 
@@ -320,10 +350,10 @@ contains
 
        call postprocess_dbg (ux, uy, uz, phi, ep)
 
-    elseif (itype.eq.itype_jet) then
-
-       call postprocess_jet (ux, uy, uz, phi, ep)
-
+!!!    elseif (itype.eq.itype_jet) then
+!!!
+!!!       call postprocess_jet (ux, uy, uz, phi, ep)
+!!!
     elseif (itype.eq.itype_tbl) then
 
        call postprocess_tbl (ux, uy, uz, ep)
@@ -339,6 +369,14 @@ contains
     elseif (itype.EQ.itype_sandbox) THEN
    
        call postprocess_sandbox (ux, uy, uz, phi, ep)
+
+    elseif (itype.eq.itype_cavity) then
+
+       call postprocess_cavity(ux, uy, uz, phi)
+
+    elseif (itype.eq.itype_pipe) then
+
+       call postprocess_pipe(ux, uy, uz, pp, phi, ep)
 
     endif
 
@@ -366,6 +404,10 @@ contains
     else if (itype .eq. itype_channel) then
 
        call visu_channel_init(case_visu_init)
+
+    else if (itype .eq. itype_hill) then
+
+       call visu_hill_init(case_visu_init)
 
     else if (itype .eq. itype_cyl) then
 
@@ -422,6 +464,11 @@ contains
        call visu_channel(ux1, uy1, uz1, pp3, phi1, ep1, num)
        called_visu = .true.
 
+    elseif (itype.eq.itype_hill) then
+
+       call visu_hill(ux1, uy1, uz1, pp3, phi1, ep1, num)
+       called_visu = .true.
+
     elseif (itype.eq.itype_cyl) then
 
        call visu_cyl(ux1, uy1, uz1, pp3, phi1, ep1, num)
@@ -432,7 +479,7 @@ contains
        call visu_tbl(ux1, uy1, uz1, pp3, phi1, ep1, num)
        called_visu = .true.
        
-   elseif (itype.eq.itype_uniform) then
+    elseif (itype.eq.itype_uniform) then
 
        call visu_uniform(ux1, uy1, uz1, pp3, phi1, ep1, num)
        called_visu = .true.
@@ -470,10 +517,10 @@ contains
 
        call momentum_forcing_channel(dux1, duy1, duz1, ux1, uy1, uz1)
 
-    elseif (itype.eq.itype_jet) then
-
-       call momentum_forcing_jet(dux1, duy1, duz1, rho1, ux1, uy1, uz1)
-
+!!!    elseif (itype.eq.itype_jet) then
+!!!
+!!!       call momentum_forcing_jet(dux1, duy1, duz1, rho1, ux1, uy1, uz1)
+!!!
     elseif (itype.eq.itype_abl) then
 
        call momentum_forcing_abl(dux1, duy1, duz1, ux1, uy1, uz1, phi1)

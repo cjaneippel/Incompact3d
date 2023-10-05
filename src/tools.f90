@@ -281,7 +281,7 @@ contains
           call decomp_2d_write_one(1,duz1(:,:,:,3),resfile,"duz-3",0,io_restart,reduce_prec=.false.)
        end if
        !
-       call decomp_2d_write_one(3,pp3,resfile,"pp",0,io_restart,phG,reduce_prec=.false.)
+       call decomp_2d_write_one(3,pp3,resfile,"pp",0,io_restart,opt_decomp=phG,reduce_prec=.false.)
        !
        if (iscalar==1) then
           do is=1, numscalar
@@ -381,7 +381,7 @@ contains
           call decomp_2d_read_one(1,duz1(:,:,:,3),resfile,"duz-3",io_restart,reduce_prec=.false.)
        end if
        !
-       call decomp_2d_read_one(3,pp3,resfile,"pp",io_restart,phG,reduce_prec=.false.)
+       call decomp_2d_read_one(3,pp3,resfile,"pp",io_restart,opt_decomp=phG,reduce_prec=.false.)
        !
        if (iscalar==1) then
          do is=1, numscalar
@@ -686,7 +686,7 @@ contains
  
     use decomp_2d
     use decomp_2d_io
-    use var, only: ux_recoutflow, uy_recoutflow, uz_recoutflow
+    use var, only: ux_recoutflow, uy_recoutflow, uz_recoutflow, ilist
     use param
 
     implicit none
@@ -695,7 +695,7 @@ contains
     integer, intent(in) :: timestep
     integer :: j,k
 
-    if (mod(itime,100)==0.and.nrank==0) print *, 'Appending outflow', timestep 
+    if (nrank==0.and.mod(itime,ilist)==0) print *, 'Appending outflow', timestep 
     do k=1,xsize(3)
     do j=1,xsize(2)
       ux_recoutflow(timestep,j,k)=ux(xend(1),j,k)
@@ -1995,149 +1995,6 @@ subroutine calc_mweight(mweight, phi, xlen, ylen, zlen)
   mweight(:,:,:) = one / mweight(:,:,:)
 
 endsubroutine calc_mweight
-!##################################################################
-!##################################################################
-function r8_random ( s1, s2, s3 )
-
-!*****************************************************************************80
-!
-!! R8_RANDOM returns a pseudorandom number between 0 and 1.
-!
-!  Discussion:
-!
-!    This function returns a pseudo-random number rectangularly distributed
-!    between 0 and 1.   The cycle length is 6.95E+12.  (See page 123
-!    of Applied Statistics (1984) volume 33), not as claimed in the
-!    original article.
-!
-!  Licensing:
-!
-!    This code is distributed under the GNU LGPL license.
-!
-!  Modified:
-!
-!    08 July 2008
-!
-!  Author:
-!
-!    FORTRAN77 original version by Brian Wichman, David Hill.
-!    FORTRAN90 version by John Burkardt.
-!
-!  Reference:
-!
-!    Brian Wichman, David Hill,
-!    Algorithm AS 183: An Efficient and Portable Pseudo-Random
-!    Number Generator,
-!    Applied Statistics,
-!    Volume 31, Number 2, 1982, pages 188-190.
-!
-!  Parameters:
-!
-!    Input/output, integer ( kind = 4 ) S1, S2, S3, three values used as the
-!    seed for the sequence.  These values should be positive
-!    integers between 1 and 30,000.
-!
-!    Output, real ( kind = 8 ) R8_RANDOM, the next value in the sequence.
-!
-  implicit none
-
-  integer ( kind = 4 ) s1
-  integer ( kind = 4 ) s2
-  integer ( kind = 4 ) s3
-  real ( kind = 8 ) r8_random
-
-  s1 = mod ( 171 * s1, 30269 )
-  s2 = mod ( 172 * s2, 30307 )
-  s3 = mod ( 170 * s3, 30323 )
-
-  r8_random = mod ( real ( s1, kind = 8 ) / 30269.0D+00 &
-                  + real ( s2, kind = 8 ) / 30307.0D+00 &
-                  + real ( s3, kind = 8 ) / 30323.0D+00, 1.0D+00 )
-
-  return
-end
-!##################################################################
-function return_30k(x) result(y)
-
-  integer ( kind = 4 ), intent(in) :: x
-  integer ( kind = 4 )             :: y
-  integer ( kind = 4 ), parameter  :: xmax = 30000
-
-  y = iabs(x) - int(iabs(x)/xmax)*xmax
-end function return_30k
-!##################################################################
-function r8_uni ( s1, s2 )
-
-!*****************************************************************************80
-!
-!! R8_UNI returns a pseudorandom number between 0 and 1.
-!
-!  Discussion:
-!
-!    This function generates uniformly distributed pseudorandom numbers
-!    between 0 and 1, using the 32-bit generator from figure 3 of
-!    the article by L'Ecuyer.
-!
-!    The cycle length is claimed to be 2.30584E+18.
-!
-!  Licensing:
-!
-!    This code is distributed under the GNU LGPL license.
-!
-!  Modified:
-!
-!    08 July 2008
-!
-!  Author:
-!
-!    Original Pascal original version by Pierre L'Ecuyer
-!    FORTRAN90 version by John Burkardt
-!
-!  Reference:
-!
-!    Pierre LEcuyer,
-!    Efficient and Portable Combined Random Number Generators,
-!    Communications of the ACM,
-!    Volume 31, Number 6, June 1988, pages 742-751.
-!
-!  Parameters:
-!
-!    Input/output, integer ( kind = 4 ) S1, S2, two values used as the
-!    seed for the sequence.  On first call, the user should initialize
-!    S1 to a value between 1 and 2147483562;  S2 should be initialized
-!    to a value between 1 and 2147483398.
-!
-!    Output, real ( kind = 8 ) R8_UNI, the next value in the sequence.
-!
-  implicit none
-
-  integer ( kind = 4 ) k
-  real ( kind = 8 ) r8_uni
-  integer ( kind = 4 ) s1
-  integer ( kind = 4 ) s2
-  integer ( kind = 4 ) z
-
-  k = s1 / 53668
-  s1 = 40014 * ( s1 - k * 53668 ) - k * 12211
-  if ( s1 < 0 ) then
-    s1 = s1 + 2147483563
-  end if
-
-  k = s2 / 52774
-  s2 = 40692 * ( s2 - k * 52774 ) - k * 3791
-  if ( s2 < 0 ) then
-    s2 = s2 + 2147483399
-  end if
-
-  z = s1 - s2
-  if ( z < 1 ) then
-    z = z + 2147483562
-  end if
-
-  r8_uni = real ( z, kind = 8 ) / 2147483563.0D+00
-
-  return
-end
 !##################################################################
 !##################################################################
 subroutine test_min_max(name,text,array_tmp,i_size_array_tmp)

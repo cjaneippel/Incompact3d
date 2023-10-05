@@ -33,7 +33,6 @@ contains
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), ntime) :: dux1, duy1, duz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), ntime) :: drho1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), ntime, numscalar) :: dphi1
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: txy1 
 
     !! Momentum equations
     call momentum_rhs_eq(dux1,duy1,duz1,rho1,ux1,uy1,uz1,ep1,phi1,divu3,wmnode)

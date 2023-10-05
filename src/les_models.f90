@@ -10,7 +10,7 @@ module les
        turb_dir = "turb-data"
 contains
 
-  subroutine init_explicit_les()
+  subroutine init_explicit_les
     !================================================================================
     !
     !  SUBROUTINE: init_explicit_les
@@ -68,12 +68,15 @@ contains
     else if (jles .eq. 2) then ! WALE
        call decomp_2d_register_variable(io_turb, "nut_wale", 1, 0, output2D, mytype)
     else if (jles .eq. 3) then ! Lilly-style Dynamic Smagorinsky
+       call decomp_2d_register_variable(io_turb, "nut_smag", 1, 0, output2D, mytype) ! Written by call to smag in dynsmag
        call decomp_2d_register_variable(io_turb, "dsmagcst_final", 1, 0, output2D, mytype)
        call decomp_2d_register_variable(io_turb, "nut_dynsmag", 1, 0, output2D, mytype)
     end if
 
+#ifdef ADIOS2
     call decomp_2d_open_io(io_turb, turb_dir, decomp_2d_write_mode)
-       
+#endif
+
   end subroutine init_explicit_les
   subroutine finalise_explicit_les()
 
@@ -90,7 +93,7 @@ contains
   subroutine Compute_SGS(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,ep1,wmnode)
     !================================================================================
     !
-    !  SUBROUTINE: Compute_SGS
+    !  SUBROUTINE: compute_SGS
     ! DESCRIPTION: computes the SGS terms (divergence of the SGS stresses) used in the
     !              momentum equation
     !      AUTHOR: G. Deskos <g.deskos14@imperial.ac.uk>
@@ -102,7 +105,7 @@ contains
     USE decomp_2d
     USE decomp_2d_io
     use var, only: nut1
-    USE abl, only: wall_sgs
+    USE abl, only: wall_sgs_slip, wall_sgs_noslip
     implicit none
 
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, ep1, wmnode
@@ -127,44 +130,53 @@ contains
 
        call sgs_mom_nonconservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1,ep1)
 
+       ! SGS correction for ABL
+       if(itype.eq.itype_abl) then
+         if (iibm.eq.0) then 
+          ! No-slip wall
+          if (ncly1==2) then 
+             call wall_sgs_noslip(ux1,uy1,uz1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
+             if(xstart(2)==1) then
+               sgsx1(:,2,:) = -wallsgsx1(:,2,:)
+               sgsy1(:,2,:) = -wallsgsy1(:,2,:)
+               sgsz1(:,2,:) = -wallsgsz1(:,2,:)
+             endif
+          ! Slip wall
+          elseif (ncly1==1) then
+             call wall_sgs_slip(ux1,uy1,uz1,phi1,nut1,wallsgsx1,wallsgsy1,wallsgsz1)
+             if(xstart(2)==1) then
+               sgsx1(:,1,:) = -wallsgsx1(:,1,:)
+               sgsy1(:,1,:) = -wallsgsy1(:,1,:)
+               sgsz1(:,1,:) = -wallsgsz1(:,1,:)
+             endif
+          endif
+         elseif (iibm==1.or.iibm==2.or.iibm==3) then
+           ! IBM with No-slip only
+           call wall_sgs_noslip(ux1,uy1,uz1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
+           do k=1,xsize(3)
+           do j=1,xsize(2)
+           do i=1,xsize(1)
+           if (wmnode(i,j,k)==one) then
+             sgsx1(i,j,k) = -wallsgsx1(i,j,k)
+             sgsy1(i,j,k) = -wallsgsy1(i,j,k)
+             sgsz1(i,j,k) = -wallsgsz1(i,j,k)
+           endif
+           enddo
+           enddo
+           enddo
+         endif
+       endif
+
     elseif (iconserv.eq.1) then ! Conservative form for calculating the divergence of the SGS stresses (used with wall functions)
 
        ! Call les_conservative
-       call sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode)
+       call sgs_mom_conservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1,ep1,wmnode)
 
-    endif
-
-    ! SGS correction for ABL
-    if(itype.eq.itype_abl.and.iconserv.eq.0) then
-      call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
-      if (iibm==0.and.xstart(2)==1) then
-        if (ncly1==2) then 
-          sgsx1(:,2,:) = -wallsgsx1(:,2,:)
-          sgsy1(:,2,:) = -wallsgsy1(:,2,:)
-          sgsz1(:,2,:) = -wallsgsz1(:,2,:)
-        elseif (ncly1==1) then
-          sgsx1(:,1,:) = -wallsgsx1(:,1,:)
-          sgsy1(:,1,:) = -wallsgsy1(:,1,:)
-          sgsz1(:,1,:) = -wallsgsz1(:,1,:)
-        endif
-      elseif (iibm==1.or.iibm==2.or.iibm==3) then
-        do k=1,xsize(3)
-        do j=1,xsize(2)
-        do i=1,xsize(1)
-        if (wmnode(i,j,k)==one) then
-          sgsx1(i,j,k) = -wallsgsx1(i,j,k)
-          sgsy1(i,j,k) = -wallsgsy1(i,j,k)
-          sgsz1(i,j,k) = -wallsgsz1(i,j,k)
-        endif
-        enddo
-        enddo
-        enddo
-      endif
     endif
 
     return
 
-  end subroutine Compute_SGS
+  end subroutine compute_SGS
 
 
   subroutine smag(nut1,ux1,uy1,uz1)
@@ -191,7 +203,7 @@ contains
     USE var, only : sxx2,syy2,szz2,sxy2,sxz2,syz2,srt_smag2,nut2
     USE var, only : sxx3,syy3,szz3,sxy3,sxz3,syz3
     USE ibm_param
-    use dbg_schemes, only: sqrt_prec
+    use dbg_schemes, only: sqrt_prec, abs_prec
     use abl, only : yterrain
 
     implicit none
@@ -282,7 +294,7 @@ contains
                 if (istret == 0) y=real(j-1,mytype)*dy
                 if (istret /= 0) y=yp(j)
                 xm=real(i+ystart(1)-1-1,mytype)*dx
-                smag_constant=(smagcst**(-nSmag)+(k_roughness*(abs(y-yterrain(xm,zm))/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                smag_constant=(smagcst**(-nSmag)+(k_roughness*(abs_prec(y-yterrain(xm,zm))/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
                 !if (y.le.yterrain(xm,zm)) then
                 !   smag_constant=0
                 !endif
@@ -313,15 +325,29 @@ contains
       call MPI_ALLREDUCE(srtmax_loc,srtmax,1,real_type,MPI_MAX,MPI_COMM_WORLD,ierr)
       call MPI_ALLREDUCE(nutmax_loc,nutmax,1,real_type,MPI_MAX,MPI_COMM_WORLD,ierr)
 
-      if (nrank==0) then 
-         write(*,*) "smag srt_smag min max= ", srtmin, srtmax  
-         write(*,*) "smag nut1     min max= ", nutmin, nutmax
+      if (mod(itime, ilist) == 0) then
+         if (nrank==0) then 
+            write(*,*) "smag srt_smag min max= ", srtmin, srtmax  
+            write(*,*) "smag nut1     min max= ", nutmin, nutmax
+         endif
       endif
     endif
 
     if (mod(itime, ioutput).eq.0) then
 
-      call decomp_2d_write_one(1, nut1, turb_dir, gen_filename("", "nut_smag", itime / ioutput, ""), 2, io_turb)
+#ifdef ADIOS2
+       if (jles /= 3) then
+          call decomp_2d_start_io(io_turb, turb_dir)
+       end if
+#endif
+       !call decomp_2d_write_one(1, nut1, turb_dir, &
+       !     gen_filename(".", "nut_smag", itime / ioutput, "bin"), &
+       !     2, io_turb)
+#ifdef ADIOS2
+       if (jles /= 3) then
+          call decomp_2d_end_io(io_turb, turb_dir)
+       end if
+#endif
 
     endif
 
@@ -389,11 +415,9 @@ contains
     real(mytype), dimension(ysize(1), ysize(2), ysize(3)) :: smagC2, smagC2f, dsmagcst2
     real(mytype), dimension(zsize(1), zsize(2), zsize(3)) :: smagC3, smagC3f, dsmagcst3
 
-    integer :: i,j,k, ijk, nvect1
+    integer :: i,j,k
 
     character(len = 30) :: filename
-
-    nvect1=xsize(1)*xsize(2)*xsize(3)
 
     if((iibm==1).or.(iibm==2).or.(iibm==3)) then
        ta1 = ux1 * (one - ep1)
@@ -404,6 +428,8 @@ contains
        tb1 = uy1
        tc1 = uz1
     endif
+
+    if (itime.eq.ifirst) call smag(nut1,ux1,uy1,uz1)
 
     uxx1 = ta1 * ta1
     uyy1 = tb1 * tb1
@@ -427,7 +453,7 @@ contains
     call filx(uxz1f, uxz1, di1,fisx,fiffx ,fifsx ,fifwx ,xsize(1),xsize(2),xsize(3),0,ubcx*ubcz) !ux1*uz1
     call filx(uyz1f, uyz1, di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,ubcy*ubcz) !uy1*uz1
 
-    if (mod(itime, ioutput) == 0) then
+    if (mod(itime, ilist) == 0) then
        if (nrank==0) write(*,*) "filx ux= ", maxval(ta1), maxval(ux1f), maxval(ta1) - maxval(ux1f)
     endif
 
@@ -466,7 +492,7 @@ contains
     call fily(uxz2f, th2, di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,ubcx*ubcz) !ux2*uz2
     call fily(uyz2f, ti2, di2,fisy,fiffy ,fifsy ,fifwy ,ysize(1),ysize(2),ysize(3),0,ubcy*ubcz) !uy2*uz2
 
-    if (mod(itime, ioutput) == 0) then
+    if (mod(itime, ilist) == 0) then
        if (nrank==0) write(*,*) "fily ux= ", maxval(ta2), maxval(ux2f), maxval(ta2) - maxval(ux2f)
     endif
 
@@ -508,7 +534,7 @@ contains
     call filz(uxz3f, th3, di3,fisz,fiffz ,fifsz ,fifwz ,zsize(1),zsize(2),zsize(3),0,ubcx*ubcz) !ux3*uz3
     call filz(uyz3f, ti3, di3,fisz,fiffz ,fifsz ,fifwz ,zsize(1),zsize(2),zsize(3),0,ubcy*ubcz) !uy3*uz3
 
-    if (mod(itime, ioutput) == 0) then
+    if (mod(itime, ilist) == 0) then
        if (nrank==0) write(*,*) "filz ux= ", maxval(ta3), maxval(ux3f), maxval(ta3) - maxval(ux3f)
     endif
 
@@ -695,7 +721,7 @@ contains
     call filx(axz1f, axz1, di1,fisx,fiffx ,fifsx ,fifwx ,xsize(1),xsize(2),xsize(3),0,zero)
     call filx(ayz1f, ayz1, di1,fisx,fiffxp,fifsxp,fifwxp,xsize(1),xsize(2),xsize(3),1,zero)
 
-    if (mod(itime, ioutput) == 0) then
+    if (mod(itime, ilist) == 0) then
        if (nrank==0) write(*,*) "filx axx1= ", maxval(axx1), maxval(axx1f), maxval(axx1) - maxval(axx1f)
     endif
 
@@ -723,7 +749,7 @@ contains
     call fily(axz2f, te2, di2,fisy,fiffyp,fifsyp,fifwyp,ysize(1),ysize(2),ysize(3),1,zero)
     call fily(ayz2f, tf2, di2,fisy,fiffy ,fifsy ,fifwy ,ysize(1),ysize(2),ysize(3),0,zero)
 
-    if (mod(itime, ioutput) == 0) then
+    if (mod(itime, ilist) == 0) then
        if (nrank==0) write(*,*) "fily axx2= ", maxval(ta2), maxval(axx2f), maxval(ta2) - maxval(axx2f)
     endif
 
@@ -755,7 +781,7 @@ contains
     call filz(axz3f, te3, di3,fisz,fiffz ,fifsz ,fifwz ,zsize(1),zsize(2),zsize(3),0,zero)
     call filz(ayz3f, tf3, di3,fisz,fiffz ,fifsz ,fifwz ,zsize(1),zsize(2),zsize(3),0,zero)
 
-    if (mod(itime, ioutput) == 0) then
+    if (mod(itime, ilist) == 0) then
        if (nrank==0) write(*,*) "filz axx3= ", maxval(ta3), maxval(axx3f), maxval(ta3) - maxval(axx3f)
     endif
 
@@ -799,11 +825,15 @@ contains
     lzz1 = lzz1 - (lxx1 + lyy1 + lzz1) / three
 
     if((iibm==1).or.(iibm==2).or.(iibm==3)) then
-       do ijk = 1, nvect1
-          if (ep1(ijk, 1, 1) .eq. one) then
-             ta1(ijk, 1, 1) = zero
-             tb1(ijk, 1, 1) = one
-          endif
+       do k = 1, xsize(3)
+          do j = 1, xsize(2)
+             do i = 1, xsize(1)
+                if (ep1(i, j, k) .eq. one) then
+                   ta1(i, j, k) = zero
+                   tb1(i, j, k) = one
+                endif
+             enddo
+          enddo
        enddo
     endif
 
@@ -811,9 +841,14 @@ contains
     smagC1 = (lxx1 * mxx1 + lyy1 * myy1 + lzz1 * mzz1 + two * (lxy1 * mxy1 + lxz1 * mxz1 + lyz1 * myz1)) / &
          (mxx1 * mxx1 + myy1 * myy1 + mzz1 * mzz1 + two * (mxy1 * mxy1 + mxz1 * mxz1 + myz1 * myz1)) !l/M
 
-    do ijk = 1, nvect1 ! Limiter for the dynamic Smagorinsky constant
-       if (smagC1(ijk, 1, 1).gt. maxdsmagcst) smagC1(ijk, 1, 1) = zero
-       if (smagC1(ijk, 1, 1).lt. 0.0) smagC1(ijk, 1, 1) = zero
+    ! Limiter for the dynamic Smagorinsky constant
+    do k = 1, xsize(3)
+       do j = 1, xsize(2)
+          do i = 1, xsize(1)
+             if (smagC1(i, j, k).gt. maxdsmagcst) smagC1(i, j, k) = maxdsmagcst!zero
+             if (smagC1(i, j, k).lt. 0.0) smagC1(i, j, k) = zero
+          enddo
+       enddo
     enddo
 
     !FILTERING THE NON-CONSTANT CONSTANT
@@ -825,7 +860,7 @@ contains
     call transpose_y_to_z(smagC2f, ta3)
     call filz(smagC3f, ta3, di3,fisz,fiffz ,fifsz ,fifwz ,zsize(1),zsize(2),zsize(3),0,zero)
 
-    if (mod(itime, ioutput) == 0) then
+    if (mod(itime, ilist) == 0) then
        if (nrank==0) write(*,*) "filx smagC1= ", maxval(smagC1), maxval(smagC1f), maxval(smagC1) - maxval(smagC1f)
        if (nrank==0) write(*,*) "fily smagC1= ", maxval(ta2), maxval(smagC2f), maxval(ta2) - maxval(smagC2f)
        if (nrank==0) write(*,*) "filz smagC1= ", maxval(ta3), maxval(smagC3f), maxval(ta3) - maxval(smagC3f)
@@ -852,6 +887,12 @@ contains
     nut1 = zero; nut2 = zero
 
     ! Use the standard smagorinsky to calculate the srt_smag
+#ifdef ADIOS2
+    if (mod(itime, ioutput) == 0) then
+       ! Start IO for writing in SMAG
+       call decomp_2d_start_io(io_turb, turb_dir)
+    end if
+#endif
     call smag(nut1,ux1,uy1,uz1)
 
     call transpose_x_to_y(srt_smag, srt_smag2)
@@ -865,7 +906,7 @@ contains
     enddo
     call transpose_y_to_x(nut2, nut1)
 
-    if (mod(itime,itest)==0) then
+    if (mod(itime,ilist)==0) then
        !if (nrank==0) write(*,*) "dsmagc init   min max= ", minval(smagC1), maxval(smagC1)
        if (nrank==0) write(*,*) "dsmagc final  min max= ", minval(dsmagcst1), maxval(dsmagcst1)
        if (nrank==0) write(*,*) "dsmag nut1    min max= ", minval(nut1), maxval(nut1)
@@ -876,8 +917,11 @@ contains
       ! write(filename, "('./data/dsmagcst_initial',I4.4)") itime / imodulo
       ! call decomp_2d_write_one(1, smagC1, filename, 2)
 
-       call decomp_2d_write_one(1, dsmagcst1, turb_dir, gen_filename("", "dsmagcst_final", itime / ioutput, ""), 2, io_turb)
-       call decomp_2d_write_one(1, nut1, turb_dir, gen_filename("", "nut_dynsmag", itime / ioutput, ""), 2, io_turb)
+       call decomp_2d_write_one(1, dsmagcst1, turb_dir, gen_filename(".", "dsmagcst_final", itime / ioutput, "bin"), 2, io_turb)
+       call decomp_2d_write_one(1, nut1, turb_dir, gen_filename(".", "nut_dynsmag", itime / ioutput, "bin"), 2, io_turb)
+#ifdef ADIOS2
+       call decomp_2d_end_io(io_turb, turb_dir)
+#endif
     endif
 
   end subroutine dynsmag
@@ -1048,13 +1092,21 @@ contains
   enddo
   call transpose_y_to_x(nut2, nut1)
 
-  if (nrank==0) write(*,*) "WALE SS min max= ", minval(srt_wale), maxval(srt_wale)
-  if (nrank==0) write(*,*) "WALE SdSd min max= ", minval(srt_wale3), maxval(srt_wale3)
-  if (nrank==0) write(*,*) "WALE nut1     min max= ", minval(nut1), maxval(nut1)
+  if (mod(itime, ilist) == 0) then
+     if (nrank==0) write(*,*) "WALE SS min max= ", minval(srt_wale), maxval(srt_wale)
+     if (nrank==0) write(*,*) "WALE SdSd min max= ", minval(srt_wale3), maxval(srt_wale3)
+     if (nrank==0) write(*,*) "WALE nut1     min max= ", minval(nut1), maxval(nut1)
+  endif
 
   if (mod(itime, ioutput).eq.0) then
 
-     call decomp_2d_write_one(1, nut1, turb_dir, gen_filename("", "nut_wale", itime / ioutput, ""), 2, io_turb)
+#ifdef ADIOS2
+     call decomp_2d_start_io(io_turb, turb_dir)
+#endif
+     call decomp_2d_write_one(1, nut1, turb_dir, gen_filename(".", "nut_wale", itime / ioutput, "bin"), 2, io_turb)
+#ifdef ADIOS2
+     call decomp_2d_end_io(io_turb, turb_dir)
+#endif
 
   endif
 
@@ -1231,7 +1283,7 @@ end subroutine wale
     USE decomp_2d
 
     USE var, only: di1,tb1,di2,tb2,di3,tb3,tc1,tc2,tc3
-    USE abl, only: wall_sgs_scalar
+    USE abl, only: wall_sgs_slip_scalar
 
     implicit none
 
@@ -1293,14 +1345,15 @@ end subroutine wale
     ! SGS correction for ABL
     if (itype.eq.itype_abl.and.is==1.and.ibuoyancy.eq.1) then
        call transpose_y_to_x(tb2,dphidy1)
-       call wall_sgs_scalar(sgsphi1,nut1,dphidy1)
+       call wall_sgs_slip_scalar(sgsphi1,nut1,dphidy1)
     endif
 
   end subroutine sgs_scalar_nonconservative
 
   !************************************************************
-  subroutine sgs_mom_v2(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,nut1,ep1,wmnode)
+  subroutine sgs_mom_conservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1,ep1,wmnode)
 
+    use MPI
     USE param
     USE variables
     USE decomp_2d
@@ -1310,13 +1363,12 @@ end subroutine wale
     USE var, only : sgsx2,sgsy2,sgsz2
     USE var, only : sgsx3,sgsy3,sgsz3
     USE var, only : sxx1,sxy1,sxz1,syy1,syz1,szz1
-    USE abl, only : wall_sgs
+    USE abl, only : wall_sgs_noslip
     use ibm_param, only: ubcx, ubcy, ubcz
 
     implicit none 
 
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, nut1, ep1, wmnode
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3), numscalar) :: phi1 
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: sgsx1, sgsy1, sgsz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallsgsx1, wallsgsy1, wallsgsz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: txx1, txy1, txz1, tyy1, tyz1, tzz1 
@@ -1326,7 +1378,7 @@ end subroutine wale
     real(mytype), dimension(zsize(1), zsize(2), zsize(3)) :: txz3, tyz3, tzz3 
     real(mytype), dimension(zsize(1), zsize(2), zsize(3)) :: taf3, tbf3, tcf3 
 
-    integer :: i, j, k
+    integer :: i, j, k, code, ierr
     
    ! if((iibm==1).or.(iibm==2).or.(iibm==3)) then
    !    do k=1,xsize(3)
@@ -1348,9 +1400,10 @@ end subroutine wale
     tyz1 = 2.0*nut1*syz1
     tzz1 = 2.0*nut1*szz1   
     
-    ! Add wall model
+    ! Add wall model for ABL
     if (itype.eq.itype_abl) then
-      call wall_sgs(ux1,uy1,uz1,phi1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
+      ! No-slip only
+      call wall_sgs_noslip(ux1,uy1,uz1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
       if (iibm==0.and.xstart(2)==1) then
         if (ncly1==2) then 
           txx1(:,2,:) = 0.
@@ -1360,12 +1413,8 @@ end subroutine wale
           tyz1(:,2,:) = - wallsgsz1(:,2,:)! tyz1(:,2,:)
           tzz1(:,2,:) = 0.
         elseif (ncly1==1) then
-          txx1(:,1,:) = 0.
-          txy1(:,1,:) = - wallsgsx1(:,1,:)! txy1(:,1,:) 
-          txz1(:,1,:) = 0.
-          tyy1(:,1,:) = 0.
-          tyz1(:,1,:) = - wallsgsz1(:,1,:)! tyz1(:,1,:) 
-          tzz1(:,1,:) = 0.
+          write(*,*) 'Simulation stopped: slip bottom wall not supported with iconserv=1'
+          call MPI_ABORT(MPI_COMM_WORLD,code,ierr); stop 
         endif
       elseif (iibm==1.or.iibm==2.or.(iibm==3)) then
         do k=1,xsize(3)
@@ -1471,6 +1520,6 @@ end subroutine wale
    !    enddo
    ! endif
 
-  end subroutine sgs_mom_v2
+  end subroutine sgs_mom_conservative
 
 end module les

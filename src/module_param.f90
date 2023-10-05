@@ -283,7 +283,9 @@ module param
        itype_tbl = 9, &
        itype_abl = 10, &
        itype_uniform = 11, &
-       itype_sandbox = 12
+       itype_sandbox = 12, &
+       itype_cavity = 13, &
+       itype_pipe = 14
 
   integer :: cont_phi,itr,itime,itest,iprocessing
   integer :: ifft,istret,iforc_entree,iturb
@@ -294,7 +296,7 @@ module param
   integer :: itime0
   integer :: iscalar,nxboite,istat,iread,iadvance_time,irotation,iibm
   integer :: npif,izap,ianal
-  integer :: ivisu, ipost, initstat
+  integer :: ivisu, ipost, initstat, istatfreq
   integer :: ifilter
   real(mytype) :: xlx,yly,zlz,dx,dy,dz,dx2,dy2,dz2,t,xxk1,xxk2,t0
   real(mytype) :: dt,re,xnu,init_noise,inflow_noise,u1,u2,angle,anglex,angley
@@ -355,7 +357,7 @@ module param
   logical :: ibirman_eos
 
   !! ABL
-  integer :: iconserv, iPressureGradient, imassconserve, ibuoyancy, iStrat, iCoriolis, idamping, iheight, itherm, iconcprec, ishiftedper, iterrain, ioutputabl
+  integer ::   iwallmodel, iconserv, iPressureGradient, imassconserve, ibuoyancy, iStrat, iCoriolis, idamping, iheight, itherm, iconcprec, ishiftedper, iterrain, ioutputabl
   real(mytype) :: z_zero, k_roughness, u_shear, ustar, dBL, CoriolisFreq, TempRate, TempFlux, gravv, T_wall, T_top, pdl, hibm, hmax, rad, chx, chz, dsampling
   real(mytype), dimension(3) :: UG
   real(mytype), save, allocatable, dimension(:,:) :: Tstat
@@ -368,15 +370,12 @@ module param
   ! Actuator disk
   character(len=100) :: admCoords
   integer :: Ndiscs          ! number of actuator discs
-  real(mytype) :: C_T, aind
+  real(mytype) :: T_relax
   ! Actuator line
   integer :: NTurbines, NActuatorlines
   character, dimension(100) :: TurbinesPath*80, ActuatorlinesPath*80
   real(mytype) :: eps_factor ! Smoothing factor
   
-  !! Case-specific variables
-  logical :: tgv_twod
-
   character :: filesauve*80, filenoise*80, &
        nchamp*80,filepath*80, fileturb*80, filevisu*80, datapath*80
   real(mytype), dimension(5) :: adt,bdt,cdt,ddt,gdt
@@ -618,7 +617,7 @@ end module simulation_stats
 !############################################################################
 module ibm_param
   use decomp_2d, only : mytype
-  real(mytype) :: cex,cey,cez,ra,ubcx,ubcy,ubcz,rads, c_air
+  real(mytype) :: cex,cey,cez,ra,rai,rao,ubcx,ubcy,ubcz,rads, c_air
   real(mytype) :: chord,thickness,omega
   integer :: inana ! Analytical BC as Input
   integer :: imove
