@@ -143,7 +143,7 @@ contains
 
          ! Read data if restarting simulation
          if (irestart==1) then
-            open(15,File='discs_time'//trim(int2str(itime/iturboutput))//'.adm')
+            open(15,File='discs_time/discs_time'//trim(int2str(itime/iturboutput))//'.adm')
             read(15,*)
             do idisc=1,Nad
                read(15,*) actuatordisc(idisc)%UF,actuatordisc(idisc)%Power,actuatordisc(idisc)%Thrust,actuatordisc(idisc)%Udisc_ave,actuatordisc(idisc)%Power_ave,actuatordisc(idisc)%Thrust_ave
@@ -252,7 +252,7 @@ contains
       integer :: idisc
 
       if (Nad>0) then
-         open(2020,File='discs_time'//trim(int2str(dump_no))//'.adm')
+         open(2020,File='discs_time/discs_time'//trim(int2str(dump_no))//'.adm')
          write(2020,*) 'UF, Power, Thrust, Udisc_ave, Power_ave, Thrust_ave'
          do idisc=1,Nad
             write(2020,*) actuatordisc(idisc)%UF,actuatordisc(idisc)%Power,actuatordisc(idisc)%Thrust,&

@@ -92,8 +92,11 @@ contains
           ym=yp(j)
           do i=nxi,nxf
              xm=real(i-1,mytype)*dx
-             if (ym-yterrain(xm,zm).le.zeromach) then
-                epsi(i,j,k)=remp
+             r=abs(xm-chx)
+             if (r.le.rad) then
+                if (ym-yterrain(xm,zm).le.zeromach) then
+                   epsi(i,j,k)=remp
+                endif
              endif
           enddo
        enddo
