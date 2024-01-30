@@ -357,8 +357,8 @@ module param
   logical :: ibirman_eos
 
   !! ABL
-  integer :: iwallmodel, iPressureGradient, imassconserve, ibuoyancy, iStrat, iCoriolis, idamping, iheight, itherm, iconcprec, ishiftedper, iconserv
-  real(mytype) :: z_zero, k_roughness, u_shear, ustar, dBL, CoriolisFreq, TempRate, TempFlux, gravv, T_wall, T_top, pdl, dsampling
+  integer ::   iwallmodel, iconserv, iPressureGradient, imassconserve, ibuoyancy, iStrat, iCoriolis, idamping, iheight, itherm, iconcprec, ishiftedper, iterrain, ioutputabl
+  real(mytype) :: z_zero, k_roughness, u_shear, ustar, dBL, CoriolisFreq, TempRate, TempFlux, gravv, T_wall, T_top, pdl, hibm, hmax, rad, chx, chz, dsampling
   real(mytype), dimension(3) :: UG
   real(mytype), save, allocatable, dimension(:,:) :: Tstat
   real(mytype), save, allocatable, dimension(:,:) :: PsiM, PsiH

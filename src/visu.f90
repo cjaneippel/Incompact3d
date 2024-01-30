@@ -171,7 +171,7 @@ contains
     use decomp_2d, only : nrank
     use decomp_2d_io, only : decomp_2d_start_io
 
-    use param, only : nrhotime, ilmn, iscalar, ioutput, irestart
+    use param, only : nrhotime, ilmn, iscalar, ioutput, irestart, iibm, iturbine
 
     use variables, only : sx, cifip6, cisip6, ciwip6, cifx6, cisx6, ciwx6
     use variables, only : sy, cifip6y, cisip6y, ciwip6y, cify6, cisy6, ciwy6
@@ -182,6 +182,7 @@ contains
     use var, only : pp2, ppi2, dip2, ph2, nymsize
     use var, only : ppi3, dip3, ph3, nzmsize
     use var, only : npress
+    use var, only: GammaDisc
 
     use tools, only : rescale_pressure
 
@@ -235,7 +236,12 @@ contains
     call write_field(ux1, ".", "ux", num)
     call write_field(uy1, ".", "uy", num)
     call write_field(uz1, ".", "uz", num)
-
+    if (iibm.ne.0) then
+       call write_field(ep1, ".", "epsi", num,.true.)
+    endif
+    if (iturbine.eq.2) then
+       call write_field(sum(GammaDisc(:,:,:,:),dim=4), ".", "GammaDiscs", num,.true.)
+    endif
     ! Interpolate pressure
     !WORK Z-PENCILS
     call interzpv(ppi3,pp3(:,:,:,1),dip3,sz,cifip6z,cisip6z,ciwip6z,cifz6,cisz6,ciwz6,&

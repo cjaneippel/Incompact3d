@@ -90,7 +90,7 @@ contains
   end subroutine finalise_explicit_les
   
   !************************************************************
-  subroutine compute_SGS(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,ep1)
+  subroutine Compute_SGS(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,phi1,ep1,wmnode)
     !================================================================================
     !
     !  SUBROUTINE: compute_SGS
@@ -108,11 +108,11 @@ contains
     USE abl, only: wall_sgs_slip, wall_sgs_noslip
     implicit none
 
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, ep1
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, ep1, wmnode
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), numscalar) :: phi1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: sgsx1, sgsy1, sgsz1
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallfluxx1, wallfluxy1, wallfluxz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallsgsx1, wallsgsy1, wallsgsz1
+    integer :: i,j,k
 
     ! Calculate eddy-viscosity
     if(jles.eq.1) then ! Smagorinsky
@@ -127,31 +127,50 @@ contains
     endif
 
     if(iconserv.eq.0) then ! Non-conservative form for calculating the divergence of the SGS stresses
+
        call sgs_mom_nonconservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1,ep1)
 
        ! SGS correction for ABL
        if(itype.eq.itype_abl) then
+         if (iibm.eq.0) then 
           ! No-slip wall
           if (ncly1==2) then 
-             call wall_sgs_noslip(ux1,uy1,uz1,nut1,wallfluxx1,wallfluxy1,wallfluxz1)
+             call wall_sgs_noslip(ux1,uy1,uz1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
              if(xstart(2)==1) then
-               sgsx1(:,2,:) = -wallfluxx1(:,2,:)
-               sgsy1(:,2,:) = -wallfluxy1(:,2,:)
-               sgsz1(:,2,:) = -wallfluxz1(:,2,:)
+               sgsx1(:,2,:) = -wallsgsx1(:,2,:)
+               sgsy1(:,2,:) = -wallsgsy1(:,2,:)
+               sgsz1(:,2,:) = -wallsgsz1(:,2,:)
              endif
           ! Slip wall
           elseif (ncly1==1) then
-             call wall_sgs_slip(ux1,uy1,uz1,phi1,nut1,wallfluxx1,wallfluxy1,wallfluxz1)
+             call wall_sgs_slip(ux1,uy1,uz1,phi1,nut1,wallsgsx1,wallsgsy1,wallsgsz1)
              if(xstart(2)==1) then
-                sgsx1(:,1,:) = wallfluxx1(:,1,:)
-                sgsy1(:,1,:) = wallfluxy1(:,1,:)
-                sgsz1(:,1,:) = wallfluxz1(:,1,:)
+               sgsx1(:,1,:) = -wallsgsx1(:,1,:)
+               sgsy1(:,1,:) = -wallsgsy1(:,1,:)
+               sgsz1(:,1,:) = -wallsgsz1(:,1,:)
              endif
           endif
+         elseif (iibm==1.or.iibm==2.or.iibm==3) then
+           ! IBM with No-slip only
+           call wall_sgs_noslip(ux1,uy1,uz1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
+           do k=1,xsize(3)
+           do j=1,xsize(2)
+           do i=1,xsize(1)
+           if (wmnode(i,j,k)==one) then
+             sgsx1(i,j,k) = -wallsgsx1(i,j,k)
+             sgsy1(i,j,k) = -wallsgsy1(i,j,k)
+             sgsz1(i,j,k) = -wallsgsz1(i,j,k)
+           endif
+           enddo
+           enddo
+           enddo
+         endif
        endif
 
     elseif (iconserv.eq.1) then ! Conservative form for calculating the divergence of the SGS stresses (used with wall functions)
-       call sgs_mom_conservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1)
+
+       ! Call les_conservative
+       call sgs_mom_conservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1,ep1,wmnode)
 
     endif
 
@@ -184,7 +203,8 @@ contains
     USE var, only : sxx2,syy2,szz2,sxy2,sxz2,syz2,srt_smag2,nut2
     USE var, only : sxx3,syy3,szz3,sxy3,sxz3,syz3
     USE ibm_param
-    use dbg_schemes, only: sqrt_prec
+    use dbg_schemes, only: sqrt_prec, abs_prec
+    use abl, only : yterrain
 
     implicit none
 
@@ -197,6 +217,7 @@ contains
     integer :: i, j, k, ierr
     character(len = 30) :: filename
 
+    real(mytype)               :: xm,ym,zm,r
 
     ! INFO about the auxillary arrays
     !--------------------------------------------------------
@@ -267,11 +288,16 @@ contains
     do k = 1, ysize(3)
        do j = 1, ysize(2)
           do i = 1, ysize(1)
-             if(itype.eq.itype_abl) then
-                !Mason and Thomson damping coefficient
-                if (istret == 0) y=real(j+ystart(2)-1-1,mytype)*dy
-                if (istret /= 0) y=yp(j+ystart(2)-1)
-                smag_constant=(smagcst**(-nSmag)+(k_roughness*(y/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+             !Mason and Thomson damping coefficient
+             if(itype.eq.itype_abl.and.SmagWallDamp.eq.1) then
+                zm=real(k+ystart(3)-1-1,mytype)*dz
+                if (istret == 0) y=real(j-1,mytype)*dy
+                if (istret /= 0) y=yp(j)
+                xm=real(i+ystart(1)-1-1,mytype)*dx
+                smag_constant=(smagcst**(-nSmag)+(k_roughness*(abs_prec(y-yterrain(xm,zm))/del(j)+z_zero/del(j)))**(-nSmag))**(-one/nSmag)
+                !if (y.le.yterrain(xm,zm)) then
+                !   smag_constant=0
+                !endif
                 length=smag_constant*del(j)
              else
                 length=smagcst*del(j)
@@ -314,9 +340,9 @@ contains
           call decomp_2d_start_io(io_turb, turb_dir)
        end if
 #endif
-       call decomp_2d_write_one(1, nut1, turb_dir, &
-            gen_filename(".", "nut_smag", itime / ioutput, "bin"), &
-            2, io_turb)
+       !call decomp_2d_write_one(1, nut1, turb_dir, &
+       !     gen_filename(".", "nut_smag", itime / ioutput, "bin"), &
+       !     2, io_turb)
 #ifdef ADIOS2
        if (jles /= 3) then
           call decomp_2d_end_io(io_turb, turb_dir)
@@ -1325,24 +1351,24 @@ end subroutine wale
   end subroutine sgs_scalar_nonconservative
 
   !************************************************************
-  subroutine sgs_mom_conservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1)
+  subroutine sgs_mom_conservative(sgsx1,sgsy1,sgsz1,ux1,uy1,uz1,nut1,ep1,wmnode)
 
+    use MPI
     USE param
     USE variables
     USE decomp_2d
-    use MPI
     USE var, only : ta1,tb1,tc1,di1
-    USE var, only : ta2,tb2,tc2,di2
+    USE var, only : ta2,tb2,tc2,di2,nut2,ux2,uy2,uz2,td2
     USE var, only : ta3,tb3,tc3,di3
     USE var, only : sgsx2,sgsy2,sgsz2
     USE var, only : sgsx3,sgsy3,sgsz3
     USE var, only : sxx1,sxy1,sxz1,syy1,syz1,szz1
     USE abl, only : wall_sgs_noslip
     use ibm_param, only: ubcx, ubcy, ubcz
-    
+
     implicit none 
 
-    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, nut1
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1, nut1, ep1, wmnode
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: sgsx1, sgsy1, sgsz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: wallsgsx1, wallsgsy1, wallsgsz1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: txx1, txy1, txz1, tyy1, tyz1, tzz1 
@@ -1354,6 +1380,18 @@ end subroutine wale
 
     integer :: i, j, k, code, ierr
     
+   ! if((iibm==1).or.(iibm==2).or.(iibm==3)) then
+   !    do k=1,xsize(3)
+   !       do j=1,xsize(2)
+   !          do i=1,xsize(1)
+   !             if(ep1(i,j, k).eq.1) then
+   !                nut1(i,j,k) = zero
+   !             endif
+   !          enddo
+   !       enddo
+   !    enddo
+   ! endif
+
     ! Construct stress tensor
     txx1 = 2.0*nut1*sxx1
     txy1 = 2.0*nut1*sxy1
@@ -1364,22 +1402,38 @@ end subroutine wale
     
     ! Add wall model for ABL
     if (itype.eq.itype_abl) then
-      if (ncly1==2) then 
-        call wall_sgs_noslip(ux1,uy1,uz1,nut1,wallsgsx1,wallsgsy1,wallsgsz1)
-        if (xstart(2)==1) then
+      ! No-slip only
+      call wall_sgs_noslip(ux1,uy1,uz1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
+      if (iibm==0.and.xstart(2)==1) then
+        if (ncly1==2) then 
           txx1(:,2,:) = 0.
           txy1(:,2,:) = - wallsgsx1(:,2,:)! txy1(:,2,:)
           txz1(:,2,:) = 0.
           tyy1(:,2,:) = 0.
           tyz1(:,2,:) = - wallsgsz1(:,2,:)! tyz1(:,2,:)
           tzz1(:,2,:) = 0.
+        elseif (ncly1==1) then
+          write(*,*) 'Simulation stopped: slip bottom wall not supported with iconserv=1'
+          call MPI_ABORT(MPI_COMM_WORLD,code,ierr); stop 
         endif
-      elseif (ncly1==1) then 
-        write(*,*) 'Simulation stopped: slip bottom wall not supported with iconserv=1'
-        call MPI_ABORT(MPI_COMM_WORLD,code,ierr); stop 
+      elseif (iibm==1.or.iibm==2.or.(iibm==3)) then
+        do k=1,xsize(3)
+        do j=1,xsize(2)
+        do i=1,xsize(1)
+        if (wmnode(i,j,k)==one) then
+          txx1(i,j,k) = 0.
+          txy1(i,j,k) = - wallsgsx1(i,j,k)! txy1(i,j,k)
+          txz1(i,j,k) = 0.
+          tyy1(i,j,k) = 0.
+          tyz1(i,j,k) = - wallsgsz1(i,j,k)! tyz1(i,j,k)
+          tzz1(i,j,k) = 0.
+        endif
+        enddo
+        enddo
+        enddo
       endif
     endif
-    
+
     ! Compute derivatives
     ta1 = zero; ta2 = zero; ta3 = zero
     tb1 = zero; tb2 = zero; tb3 = zero
@@ -1451,6 +1505,20 @@ end subroutine wale
     call transpose_y_to_x(sgsx2, sgsx1)
     call transpose_y_to_x(sgsy2, sgsy1)
     call transpose_y_to_x(sgsz2, sgsz1)
+
+   ! if((iibm==1).or.(iibm==2).or.(iibm==3)) then
+   !    do k=1,xsize(3)
+   !       do j=1,xsize(2)
+   !          do i=1,xsize(1)
+   !             if(ep1(i,j, k).eq.1) then
+   !                sgsx1(i,j,k) = zero
+   !                sgsy1(i,j,k) = zero
+   !                sgsz1(i,j,k) = zero
+   !             endif
+   !          enddo
+   !       enddo
+   !    enddo
+   ! endif
 
   end subroutine sgs_mom_conservative
 

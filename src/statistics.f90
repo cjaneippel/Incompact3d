@@ -209,7 +209,7 @@ contains
     call read_or_write_one_stat(flag_read, gen_statname("uvmean"), uvmean)
     call read_or_write_one_stat(flag_read, gen_statname("uwmean"), uwmean)
     call read_or_write_one_stat(flag_read, gen_statname("vwmean"), vwmean)
-
+    
     if (iscalar==1) then
        do is=1, numscalar
           write(filename,"('phi',I2.2)") is
@@ -360,11 +360,11 @@ contains
     ! inputs
     real(mytype), intent(in) :: var, ep1
 
-    if (iibm==2) then
-      one_minus_ep1 = (one - ep1) * var
-    else
+    !if (iibm==2) then
+    !  one_minus_ep1 = (one - ep1) * var
+    !else
       one_minus_ep1 = var
-    endif
+    !endif
 
   end function one_minus_ep1
 

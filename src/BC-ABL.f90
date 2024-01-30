@@ -8,6 +8,123 @@ contains
 
   !*******************************************************************************
   !
+  real(mytype) function yterrain(xm,zm)
+  !
+  !*******************************************************************************
+
+    USE decomp_2d
+    use param, only : two, pi
+    use param, only : iterrain, hibm, hmax, rad, chx, chz
+    use dbg_schemes, only: sqrt_prec
+    use MPI
+
+    implicit none
+
+    real(mytype)               :: xm,zm,r
+    integer                    :: ierror,code
+
+    if (iterrain==1) then
+       !Flat terrain
+       yterrain=hibm
+    elseif (iterrain==2) then
+       !2D Hill
+       r=abs(xm-chx)
+       if (r.le.rad) then
+          yterrain=hmax*cos(pi*(xm-chx)/(two*rad))**two+hibm
+       else
+          yterrain=hibm
+       endif
+    elseif (iterrain==3) then
+       !3D Hill
+       r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
+       if (r.le.rad) then
+          yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
+       else
+          yterrain=hibm
+       endif
+    else 
+       write(*,*)  'Simulation stopped: iterrain not supported'
+       call MPI_ABORT(MPI_COMM_WORLD,code,ierror); stop
+    endif
+  end function yterrain
+
+  !*******************************************************************************
+  !
+  subroutine geomcomplex_abl(epsi,nxi,nxf,ny,nyi,nyf,nzi,nzf,dx,yp,dz,remp,wmnode)
+  !
+  !*******************************************************************************
+
+    USE decomp_2d
+    use param, only : one, two, zero, pi, ten
+    use param, only : iterrain, hibm, hmax, rad, chx, chz, iibm
+    USE var, only : uvisu
+    USE param, only: ioutput, itime
+    use ibm_param
+    use dbg_schemes, only: sqrt_prec
+
+    implicit none
+
+    integer                    :: nxi,nxf,ny,nyi,nyf,nzi,nzf
+    real(mytype),dimension(nxi:nxf,nyi:nyf,nzi:nzf) :: epsi
+    real(mytype),dimension(ny) :: yp
+    real(mytype)               :: dx,dz
+    real(mytype)               :: remp
+    integer                    :: i,j,k
+    real(mytype)               :: xm,ym,zm,r
+    real(mytype)               :: ywm
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: wmnode
+    real(mytype)               :: zeromach
+
+    zeromach=one
+    do while ((one + zeromach / two) .gt. one)
+       zeromach = zeromach/two
+    end do
+    zeromach = ten*zeromach
+    
+    ! Intitialise epsi and wmnode
+    epsi(:,:,:)=zero
+    wmnode(:,:,:)=zero
+
+    !Populate epsi
+    do k=nzi,nzf
+       zm=real(k-1,mytype)*dz
+       do j=nyi,nyf
+          ym=yp(j)
+          do i=nxi,nxf
+             xm=real(i-1,mytype)*dx
+             r=abs(xm-chx)
+             if (r.le.rad) then
+                if (ym-yterrain(xm,zm).le.zeromach) then
+                   epsi(i,j,k)=remp
+                endif
+             endif
+          enddo
+       enddo
+    enddo
+
+    if (iibm.ge.1.or.iibm==2.or.iibm==3) then
+    ! Find wall model nodes
+    do k=1,xsize(3)
+       zm=real(k+xstart(3)-1-1,mytype)*dz
+       do i=1,xsize(1)
+          xm=real(i-1,mytype)*dx
+          do j=1,xsize(2)
+             ym=yp(j+xstart(2)-1)
+             ywm=yterrain(xm,zm)+yp(j+xstart(2))-ym
+             if (ym.gt.yterrain(xm,zm).and.ym.le.ywm) then
+                wmnode(i,j,k)=one
+                exit
+             endif
+          enddo
+       enddo
+    enddo
+    endif
+
+    return
+  end subroutine geomcomplex_abl
+
+  !*******************************************************************************
+  !
   subroutine init_abl(ux1,uy1,uz1,ep1,phi1)
   !
   !*******************************************************************************
@@ -17,6 +134,7 @@ contains
     use variables
     use param
     use MPI
+    use dbg_schemes, only: sqrt_prec
 
     implicit none
 
@@ -26,6 +144,8 @@ contains
     real(mytype) :: y, phinoise
     integer :: k,j,i,ierror,ii,code
     integer, dimension (:), allocatable :: seed
+    
+    real(mytype)               :: xm,zm,r
 
     ux1=zero
     uy1=zero
@@ -44,6 +164,7 @@ contains
     ! Generation of a random noise
     if (iin /= 0) then
       call system_clock(count=code)
+      if (iin.eq.2) code=0
       call random_seed(size = ii)
       call random_seed(put = code+63946*(nrank+1)*(/ (i - 1, i = 1, ii) /)) !
 
@@ -64,11 +185,23 @@ contains
 
     ! Initialize with log-law or geostrophic wind
     do k=1,xsize(3)
+    zm=real(k+xstart(3)-1-1,mytype)*dz
     do j=1,xsize(2)
        if (istret == 0) y=real(j+xstart(2)-1-1,mytype)*dy
-       if (istret /= 0) y=yp(j)
+       if (istret /= 0) y=yp(j+xstart(2)-1)
        if (iPressureGradient.eq.1.or.imassconserve.eq.1) then
-           bxx1(j,k)=ustar/k_roughness*log((y+z_zero)/z_zero)
+           if (iibm.eq.0) then
+               bxx1(j,k)=ustar/k_roughness*log((y+z_zero)/z_zero)
+           elseif (iibm.ge.1) then
+               do i=1,xsize(1)
+                   xm=real(i-1,mytype)*dx
+                   if(y.le.yterrain(xm,zm)) then
+                       bxx1(j,k)=zero
+                   else
+                       bxx1(j,k)=ustar/k_roughness*log((abs(y-yterrain(xm,zm))+z_zero)/z_zero)
+                   endif
+               enddo
+           endif
        else
            bxx1(j,k)=UG(1)
        endif
@@ -82,8 +215,8 @@ contains
     do j=1,xsize(2)
     do i=1,xsize(1)
        ux1(i,j,k)=bxx1(j,k)*(one+ux1(i,j,k))
-       uy1(i,j,k)=uy1(i,j,k)
-       uz1(i,j,k)=uz1(i,j,k)
+       uy1(i,j,k)=bxx1(j,k)*uy1(i,j,k)
+       uz1(i,j,k)=bxx1(j,k)*uz1(i,j,k)
     enddo
     enddo
     enddo
@@ -299,6 +432,7 @@ contains
     USE param
     USE variables
     USE decomp_2d
+    use dbg_schemes, only: sqrt_prec
 
     implicit none
 
@@ -306,11 +440,23 @@ contains
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ux1, uy1, uz1
     real(mytype),dimension(xsize(1),xsize(2),xsize(3), numscalar) :: phi1
 
-    integer :: i
-   
+    integer :: i,k
+    
+    real(mytype)               :: xm,zm,r
+
     ! BL Forcing (Pressure gradient or geostrophic wind)
     if (iPressureGradient==1) then
-       dux1(:,:,:,1)=dux1(:,:,:,1)+ustar**2./dBL
+      if (iibm.eq.0) then
+          dux1(:,:,:,1)=dux1(:,:,:,1)+ustar**2./dBL
+      elseif (iibm.ge.1) then
+          do k=1,xsize(3)
+          zm=real(k+xstart(3)-1-1,mytype)*dz
+          do i=1,xsize(1)
+              xm=real(i-1,mytype)*dx
+              dux1(i,:,k,1)=dux1(i,:,k,1)+ustar**2./(dBL-yterrain(xm,zm))
+          enddo
+          enddo
+       endif
        if (iconcprec.eq.1) then
           do i=1,xsize(1)
              if (real(i-1,mytype)*dx >= pdl) then
@@ -387,7 +533,7 @@ contains
     use var, only: sxy1, syz1, heatflux, ta2, tb2, ta3, tb3
     use ibm_param, only : ubcx, ubcz
     use dbg_schemes, only: log_prec, tanh_prec, sqrt_prec, abs_prec, atan_prec
-   
+
     implicit none
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(in) :: ux,uy,uz, nut1
     real(mytype),dimension(xsize(1),xsize(2),xsize(3),numscalar),intent(in) :: phi
@@ -489,11 +635,11 @@ contains
     ux_HAve=ux_HAve/(nxc*nzc)
     uz_HAve=uz_HAve/(nxc*nzc)
     S_HAve=sqrt(ux_HAve**2.+uz_HAve**2.)
-    if (iscalar==1) then 
+    if (iscalar==1) then
       Phi_HAve=Phi_HAve/(nxc*nzc)
-      if (ibuoyancy==1) then 
+      if (ibuoyancy==1) then
         Tstat12 =T_wall + (T_top-T_wall)*delta/yly
-      else 
+      else
         Tstat12 =zero
       endif
       Phi_HAve=Phi_HAve + Tstat12
@@ -505,7 +651,7 @@ contains
     wallfluxz=zero
 
     ! Initialize stratification variables
-    if (iscalar==1.and.ibuoyancy == 1.and.xstart(2)==1) then 
+    if (iscalar==1.and.ibuoyancy == 1.and.xstart(2)==1) then
       PsiM_HAve= zero
       PsiH_HAve= zero
       ii       = 0
@@ -536,7 +682,7 @@ contains
       PsiM=PsiM_HAve
       PsiH=PsiH_HAve
       if (istrat==1) zeta=zeta_HAve
-    else   
+    else
       heatflux =zero
       Obukhov  =zero
       PsiM     =zero
@@ -618,7 +764,7 @@ contains
        L_HAve=L_HAve/(nxc*nzc)
        Q_HAve=Q_HAve/(nxc*nzc)
     endif
-    
+
     ! Compute friction velocity u_shear and boundary layer height
     u_shear=k_roughness*S_HAve/(log_prec(delta/z_zero)-PsiM_HAve)
     if (iheight==1) call boundary_height(ux,uy,uz,dBL)
@@ -630,7 +776,7 @@ contains
          write(*,*)  ' Horizontally-averaged velocity at y=1/2: ', ux_HAve,uz_Have
          write(*,*)  ' BL height: ', dBL
          write(*,*)  ' Friction velocity: ', u_shear
-    
+
         if (iscalar==1) then
            write(*,*)  ' Temperature: ', Phi_HAve
            write(*,*)  ' PsiM: ', PsiM_HAve
@@ -685,7 +831,7 @@ contains
 
   !*******************************************************************************
   !
-  subroutine wall_sgs_noslip(ux1,uy1,uz1,nut1,wallsgsx1,wallsgsy1,wallsgsz1)
+  subroutine wall_sgs_noslip(ux1,uy1,uz1,nut1,wallsgsx1,wallsgsy1,wallsgsz1,wmnode)
   !
   ! Outputs stresses if iconserv=1 and fluxes if iconserv=0 (wallsgsx,wallsgsy,wallsgsz)
   !
@@ -696,12 +842,12 @@ contains
     use param
     use variables
     use var, only: di1, di2, di3
-    use var, only: sxy1, syz1, tb1, ta2, tb2
-    use dbg_schemes, only: log_prec, sqrt_prec
+    use var, only: sxy1, syz1, tb1, ta2, tb2, tc2, ta3, tb3
     use ibm_param, only : ubcx, ubcy, ubcz
+    use dbg_schemes, only: log_prec, sqrt_prec
    
     implicit none
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(in) :: ux1,uy1,uz1,nut1
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(in) :: ux1,uy1,uz1,nut1,wmnode
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(out) :: wallsgsx1,wallsgsy1,wallsgsz1
     real(mytype),dimension(ysize(1),ysize(3)) :: tauwallxy2, tauwallzy2
     integer :: i,j,k,code,j0
@@ -710,10 +856,10 @@ contains
     real(mytype) :: ux_HAve_local, uz_HAve_local
     real(mytype) :: ux_HAve, uz_HAve, S_HAve, ux_delta, uz_delta, S_delta
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: txy1,tyz1,dtwxydx
-    real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallsgsx2,wallsgsz2
+    real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: txy2,tyz2,wallsgsx2,wallsgsz2,wmnode2
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
     
-    real(mytype)               :: y_sampling
+    real(mytype)               :: xm,y_sampling,y_wmn,zm,r
     
     ! Reset wall flux/stresses values
     wallsgsx1 = zero
@@ -731,11 +877,14 @@ contains
       call transpose_x_to_y(tyz1,tyz2)
     endif
 
-    ! Work on Y-pencil
+    ! Work on Y-percil
+    call transpose_x_to_y(wmnode,wmnode2)
     call transpose_x_to_y(ux1,ta2)
     call transpose_x_to_y(uz1,tb2)
  
     ! Apply BCs locally
+    ! Regular ABL
+    if (iibm==0) then
     do k=1,ysize(3)
     do i=1,ysize(1)
       !sampling at dsampling*dy from wall
@@ -750,6 +899,39 @@ contains
       tyz2(i,2,k) = tauwallzy2(i,k)
     enddo
     enddo
+    endif
+
+    ! Complex terrain
+    if (iibm.ge.1) then
+       do k=1,ysize(3)
+       do i=1,ysize(1)
+       do j=1,ysize(2)
+         if (wmnode2(i,j,k)==one) then   
+            zm=real(k+ystart(3)-1-1,mytype)*dz
+            xm=real(i+ystart(1)-1-1,mytype)*dx
+            !sampling at dsampling*dy from wall
+            y_wmn=real(j-1,mytype)*dy
+            y_sampling=yterrain(xm,zm)+delta-y_wmn
+            if (y_sampling.ge.0) then
+               j0=floor(y_sampling/dy)
+               y_sampling=y_sampling-real(j0,mytype)*dy
+               ux_delta=(1-y_sampling/dy)*ta2(i,j+j0,k)+(y_sampling/dy)*ta2(i,j+j0+1,k)
+               uz_delta=(1-y_sampling/dy)*tb2(i,j+j0,k)+(y_sampling/dy)*tb2(i,j+j0+1,k)
+            else
+               ux_delta=(1+y_sampling/(y_wmn-yterrain(xm,zm)))*ta2(i,j,k)
+               uz_delta=(1+y_sampling/(y_wmn-yterrain(xm,zm)))*tb2(i,j,k)
+            endif 
+            S_delta=sqrt_prec(ux_delta**2.+uz_delta**2.)
+            tauwallxy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)))**two*ux_delta*S_delta
+            tauwallzy2(i,k)=-(k_roughness/(log_prec(delta/z_zero)))**two*uz_delta*S_delta
+            txy2(i,j,k) = tauwallxy2(i,k)
+            tyz2(i,j,k) = tauwallzy2(i,k)
+            exit 
+         endif
+       enddo
+       enddo
+       enddo
+    endif
 
     if (iconserv==0) then
       ! Derivative of wallmodel-corrected SGS stress tensor
@@ -767,7 +949,6 @@ contains
       call transpose_y_to_x(txy2,wallsgsx1)
       call transpose_y_to_x(tyz2,wallsgsz1)
     endif
-    
 
     ! Print information at y=5*dy
     ux_HAve_local  =zero
@@ -804,8 +985,12 @@ contains
     endif
     do k=1,ysize(3)
     do i=1,ysize(1)
-       ux_HAve_local=ux_HAve_local+ta2(i,6,k)
-       uz_HAve_local=uz_HAve_local+tb2(i,6,k)
+    do j=1,ysize(2)
+      if (iibm==0.and.j==2.or.iibm.ge.1.and.wmnode2(i,j,k)==one) then   
+        ux_HAve_local=ux_HAve_local+ta2(i,j+4,k)
+        uz_HAve_local=uz_HAve_local+tb2(i,j+4,k)
+      endif
+    enddo
     enddo
     enddo
     ux_HAve_local=ux_HAve_local
@@ -826,7 +1011,7 @@ contains
        write(*,*)  ' Horizontally-averaged velocity at 5*dy: ', ux_HAve,uz_HAve
        write(*,*)  ' Friction velocity at 5*dy: ', u_shear
     endif
-
+    
     return
   end subroutine wall_sgs_noslip
 
@@ -848,7 +1033,7 @@ contains
     real(mytype),dimension(ysize(1),ysize(2),ysize(3)) :: ux
     integer :: j,i,k,code
     real(mytype) :: can,ut3,ut,ut4,xloc
-
+    
     ut3=zero
     do k=1,ysize(3)
       do i=1,ysize(1)
@@ -873,7 +1058,7 @@ contains
 
     ! Flow rate for a logarithmic profile
     !can=-(ustar/k_roughness*yly*(log(yly/z_zero)-1.)-ut4)
-    can=-(ustar/k_roughness*(yly*log(dBL/z_zero)-dBL)-ut4)
+    can=-(ustar/k_roughness*((yly-hibm)*log(dBL/z_zero)-dBL)-ut4)
 
     if (nrank==0.and.mod(itime,ilist)==0)  write(*,*) '# Rank ',nrank,'correction to ensure constant flow rate',ut4,can
 
@@ -884,7 +1069,7 @@ contains
           continue
         else
           do j=1,ny
-            ux(i,j,k)=ux(i,j,k)-can/yly
+            ux(i,j,k)=ux(i,j,k)-can/(yly-hibm)
           enddo
         endif
       enddo
@@ -1017,8 +1202,8 @@ contains
       damp_lo = 300._mytype
       coeff   = 0.0016_mytype !0.5*ustar/dBL
     else
-      dheight = zpone*dBL
-      wvar    = fifteen !1./(1./k_roughness*(yly*log(yly/dBL)-yly+dBL)/(yly-dBL))
+      dheight = 0.5_mytype*dBL
+      wvar    = 5.0_mytype !1./(1./k_roughness*(yly*log(yly/dBL)-yly+dBL)/(yly-dBL))
       coeff   = wvar*ustar/dBL
     endif
 
@@ -1039,16 +1224,16 @@ contains
             duz1(i,j,k,1)=duz1(i,j,k,1)-coeff*lambda*(uz1(i,j,k)-UG(3))
           ! Damping for neutral ABL
           else
-            if (y>=(dBL+half*dheight)) then
+            if (y>=(dBL-half*dheight)) then
               lambda=one
-            elseif (y>=(dBL-half*dheight).and.y<(dBL+half*dheight)) then
+            elseif (y>=(dBL-dheight).and.y<(dBL-half*dheight)) then
               lambda=half*(one-cos_prec(pi*(y-(dBL-half*dheight))/dheight))
             else
              lambda=zero
             endif
             xloc=real(i-1,mytype)*dx
             if (iconcprec.eq.1.and.xloc.ge.pdl) lambda=0.
-            dux1(i,j,k,1)=dux1(i,j,k,1)-coeff*lambda*(ux1(i,j,k)-ustar/k_roughness*log_prec(dBL/z_zero))
+            dux1(i,j,k,1)=dux1(i,j,k,1)-coeff*lambda*(ux1(i,j,k)-4.37)
             duy1(i,j,k,1)=duy1(i,j,k,1)-coeff*lambda*(uy1(i,j,k)-UG(2))
             duz1(i,j,k,1)=duz1(i,j,k,1)-coeff*lambda*(uz1(i,j,k)-UG(3))
           endif

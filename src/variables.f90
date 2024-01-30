@@ -21,7 +21,7 @@ module var
   real(mytype), save, allocatable, dimension(:,:,:) :: divu3
   real(mytype), save, allocatable, dimension(:,:,:,:) :: phi1, phi2, phi3
   real(mytype), save, allocatable, dimension(:,:,:) :: px1, py1, pz1
-  real(mytype), save, allocatable, dimension(:,:,:) :: ep1, diss1, pre1
+  real(mytype), save, allocatable, dimension(:,:,:) :: ep1, diss1, pre1 
   real(mytype), save, allocatable, dimension(:,:,:,:) :: dux1,duy1,duz1  ! Output of convdiff
   real(mytype), save, allocatable, dimension(:,:,:,:,:) :: dphi1
   real(mytype), save, allocatable, dimension(:,:,:) :: mu1,mu2,mu3
@@ -69,6 +69,7 @@ module var
 
   ! working arrays for ABL
   real(mytype), save, allocatable, dimension(:,:) :: heatflux
+  real(mytype), save, allocatable, dimension(:,:,:) :: wmnode
   real(mytype), save, allocatable, dimension(:,:,:,:) :: abl_T
 
   ! arrays for turbine modelling
@@ -1313,6 +1314,8 @@ contains
     PsiH = zero
     allocate(Tstat(xsize(2),1))
     Tstat = zero
+    allocate(wmnode(xsize(1),xsize(2),xsize(3)))
+    wmnode=zero
     if (itype.eq.itype_abl.and.ibuoyancy.eq.1) then
        allocate(abl_T(xsize(1),xsize(2),xsize(3),numscalar))
        abl_T = zero

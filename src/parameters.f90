@@ -66,7 +66,9 @@ subroutine parameter(input_i3d)
        Fr, ibirman_eos
   NAMELIST /ABL/ z_zero, iwallmodel, k_roughness, ustar, dBL, &
        imassconserve, ibuoyancy, iPressureGradient, iCoriolis, CoriolisFreq, &
-       istrat, idamping, iheight, TempRate, TempFlux, itherm, gravv, UG, T_wall, T_top, ishiftedper, iconcprec, pdl, dsampling 
+       istrat, idamping, iheight, TempRate, TempFlux, itherm, gravv, UG, T_wall, &
+       T_top, ishiftedper, iconcprec, pdl, iterrain, ioutputabl, hibm, hmax, rad,&
+       chx, chz, dsampling
   NAMELIST /CASE/ pfront
   NAMELIST/ALMParam/iturboutput,NTurbines,TurbinesPath,NActuatorlines,ActuatorlinesPath,eps_factor,rho_air
   NAMELIST/ADMParam/Ndiscs,ADMcoords,iturboutput,rho_air,T_relax
@@ -600,7 +602,7 @@ subroutine parameter_defaults()
   !! LES stuff
   smagwalldamp=1
   nSmag=1
-  iconserv=0
+  iconserv=1
   smagcst=0.15
   maxdsmagcst=0.3
 
@@ -671,6 +673,14 @@ subroutine parameter_defaults()
   !! Turbine modelling
   iturbine=0
   rho_air=one
+  !! Complex Terrain
+  hibm=0.03125_mytype
+  hmax=0.04_mytype
+  rad=0.1_mytype
+  chx=1.0625_mytype
+  chz=1.0625_mytype
+  dsampling=1.0_mytype
+  iterrain=0
   T_relax=-1.0_mytype
 
   !! IO
