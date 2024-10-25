@@ -3,6 +3,7 @@
 !SPDX-License-Identifier: BSD 3-Clause
 
 module abl
+  character(len=*), parameter :: io_abl = "io-abl"
 
 contains
 
@@ -13,15 +14,23 @@ contains
   !*******************************************************************************
 
     USE decomp_2d
-    use param, only : two, pi
-    use param, only : iterrain, hibm, hmax, rad, chx, chz
-    use dbg_schemes, only: sqrt_prec
+    use param, only : two, pi, one, half
+    use variables, only : nx, nz
+    use param, only : iterrain, hibm, hmax, rad, chx, chz, dx, dz, zlz, nclz1
+    use dbg_schemes, only: sqrt_prec, sin_prec, cos_prec
     use MPI
+
+    use var, only : yfarmsurf!, roughsurf
 
     implicit none
 
-    real(mytype)               :: xm,zm,r
-    integer                    :: ierror,code
+    real(mytype)               :: xm,zm,r, xtrans, ztransini, ztransend, yavez
+    integer                    :: ierror,code,i, ix, iz
+
+    ! For debugging, print the matrix to ensure it's read correctly
+    !do i = 1, nx*nz
+    !    print *, (yfarmsurf(i))
+    !end do
 
     if (iterrain==1) then
        !Flat terrain
@@ -37,10 +46,38 @@ contains
     elseif (iterrain==3) then
        !3D Hill
        r=sqrt_prec((xm-chx)**two+(zm-chz)**two)
-       if (r.le.rad) then
+     if (r.le.rad) then
           yterrain=hmax*cos(pi*sqrt_prec((xm-chx)**two+(zm-chz)**two)/(two*rad))**two+hibm
        else
           yterrain=hibm
+       endif
+    elseif (iterrain==4) then
+       !i = nint(xm/dx+one+nx*zm/dz)
+       ix = nint(xm / dx)    ! X index
+       iz = nint(zm / dz)    ! Z index
+       i = ix + 1+ iz*nx  ! Combine into 1D index
+       yterrain=yfarmsurf(i)
+    elseif (iterrain==5) then
+       !i = nint(xm/dx+one+nx*zm/dz)
+       ix = nint(xm / dx)    ! X index
+       iz = nint(zm / dz)    ! Z index
+       i = ix + (iz - 1) * nx  ! Combine into 1D index
+       yterrain=yfarmsurf(i)
+       !yterrain=roughsurf(i)*1000
+       xtrans = 1000
+       yavez = 100
+       ztransini = 500
+       ztransend = zlz-ztransini
+       if (nclz1==0) then
+           if (zm.le.ztransini) then !500m of smoothness
+               yterrain = yavez+(yterrain-yavez)*sin_prec(half*pi*(zm/ztransini))**two
+           endif
+           if (zm.ge.ztransend) then !500m of smoothness
+               yterrain = yavez+(yterrain-yavez)*sin_prec(half*pi*(1-((zm-ztransend)/ztransini)))**two
+           endif
+       endif
+       if (xm.le.xtrans) then !500m of smoothness
+           yterrain = yterrain*sin_prec(half*pi*(xm/xtrans))**two
        endif
     else 
        write(*,*)  'Simulation stopped: iterrain not supported'
@@ -60,7 +97,12 @@ contains
     USE var, only : uvisu
     USE param, only: ioutput, itime
     use ibm_param
-    use dbg_schemes, only: sqrt_prec
+    use dbg_schemes, only: sqrt_prec, sin_prec, cos_prec
+
+    use variables, only : nx, nz
+    use decomp_2d_io, only : decomp_2d_read_one
+    use MPI
+    use var, only : yfarmsurf!, roughsurf
 
     implicit none
 
@@ -74,6 +116,65 @@ contains
     real(mytype)               :: ywm
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: wmnode
     real(mytype)               :: zeromach
+    integer                    :: code, ierror
+
+    integer :: s, n_rows
+    !real(mytype), dimension(nx*nz) :: yfarmsurf
+    real(mytype) :: discard1, discard2  ! Temporary variables to read and discard first two columns
+
+    ! ADDED variables for hill collection
+    integer                    :: p, num_hills
+    real(mytype)               :: x0, z0, h, L1, L2, yfarm
+    real(mytype), allocatable  :: hill_collection(:,:)
+
+    if (iterrain==4) then
+       ! Allocate based on the number of hills, for example, 5 columns (x0, z0, h, L1, L2) and num_hills rows
+       num_hills = 12  ! You can adjust this based on the actual number of hills
+       allocate(hill_collection(num_hills, 5))
+       
+       ! Read the hill parameters from a file (use an appropriate file path)
+       open(unit=10, file='hill_collection.txt', status='old')
+       do p = 1, num_hills
+          read(10, *) hill_collection(p, :)  ! Read each row: x0, z0, h, L1, L2
+       end do
+       close(10)
+
+       n_rows = nx*nz  ! Replace with number of rows in df_new
+       ! Read the matrix values
+       do s = 1, n_rows
+           xm = mod(s-1, nx)*dx
+           zm = floor(real(s-1) / real(nx)) * dz
+           yfarm = hibm
+           do i = 1, num_hills
+              x0 = hill_collection(i, 1)  ! Center of the hill in x
+              z0 = hill_collection(i, 2)  ! Center of the hill in z
+              h  = hill_collection(i, 3)  ! Height of the hill
+              L1 = hill_collection(i, 4)  ! Horizontal size in x-direction
+              L2 = hill_collection(i, 5)  ! Horizontal size in z-direction
+              ! Calculate the distance in the elliptical (x,z) plane
+              if (abs(xm - x0) <= L1 .and. abs(zm - z0) <= L2) then
+                 r = sqrt_prec((xm - x0)**two + (zm - z0)**two)
+                 if (r <= max(L1, L2)) then
+                    ! Apply the hill shape using cos² formula
+                    yfarm = yfarm + h * cos_prec(pi * (xm - x0) / (two * L1))**2 * cos_prec(pi * (zm - z0) / (two * L2))**2
+                 endif
+              endif
+           end do
+           yfarmsurf(s) = yfarm    
+       end do
+    elseif (iterrain==5) then
+       open(unit=10, file='./terrain.txt', form='formatted', status='old')
+       !open(unit=11, file='./roughness.txt', form='formatted', status='old')
+
+       n_rows = nx*nz  ! Replace with number of rows in df_new
+       ! Read the matrix values
+       do s = 1, n_rows
+           read(10, *) discard1, discard2, yfarmsurf(s)
+           !read(11, *) discard1, discard2, roughsurf(s)
+       end do
+       close(10)
+       !close(11)
+    endif
 
     zeromach=one
     do while ((one + zeromach / two) .gt. one)
@@ -92,12 +193,12 @@ contains
           ym=yp(j)
           do i=nxi,nxf
              xm=real(i-1,mytype)*dx
-             r=abs(xm-chx)
-             if (r.le.rad) then
+             !r=abs(xm-chx)
+             !if (r.le.rad) then
                 if (ym-yterrain(xm,zm).le.zeromach) then
                    epsi(i,j,k)=remp
                 endif
-             endif
+             !endif
           enddo
        enddo
     enddo
@@ -348,7 +449,13 @@ contains
       do j=1,xsize(2)
         bxx1(j,k)=bxx1(j,k)+(two*bxo(j,k)-one)*inflow_noise*um
         bxy1(j,k)=bxy1(j,k)+(two*byo(j,k)-one)*inflow_noise*um
-        bxz1(j,k)=bxz1(j,k)+(two*bzo(j,k)-one)*inflow_noise*um
+        if (xstart(3)==1.and.k==1) then
+            bxz1(j,k)=0!bxz1(j,k)+(two*bzo(j,k)-one)*inflow_noise*um
+        else if(xend(3)==nz.and.k==xsize(3)) then
+            bxz1(j,k)=0!bxz1(j,k)+(two*bzo(j,k)-one)*inflow_noise*um
+        else
+            bxz1(j,k)=bxz1(j,k)+(two*bzo(j,k)-one)*inflow_noise*um
+        endif
         if (iscalar.eq.1) then
           phi(1,j,k,:)=one
         endif
@@ -368,7 +475,17 @@ contains
         ! Case 2: Inflow is full velocity field
         bxx1(j,k)=ux_inflow(itime_input,j,k)
         bxy1(j,k)=uy_inflow(itime_input,j,k)
-        bxz1(j,k)=uz_inflow(itime_input,j,k)
+        if (nclz1==1.and.nclzn==1) then
+            if (xstart(3)==1.and.k==1) then
+                bxz1(j,k)=0!uz_inflow(itime_input,j,k)
+            else if(xend(3)==nz.and.k==xsize(3)) then
+                bxz1(j,k)=0!uz_inflow(itime_input,j,k)
+            else
+                bxz1(j,k)=uz_inflow(itime_input,j,k)
+            endif
+        elseif (nclz1==0.and.nclzn==0) then
+            bxz1(j,k)=uz_inflow(itime_input,j,k)
+        endif
       enddo
       enddo
     endif
@@ -845,6 +962,7 @@ contains
     use var, only: sxy1, syz1, tb1, ta2, tb2, tc2, ta3, tb3
     use ibm_param, only : ubcx, ubcy, ubcz
     use dbg_schemes, only: log_prec, sqrt_prec
+    !use var, only : roughsurf
    
     implicit none
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(in) :: ux1,uy1,uz1,nut1,wmnode
@@ -860,6 +978,9 @@ contains
     real(mytype),dimension(zsize(1),zsize(2),zsize(3)) :: tyz3,dtwyzdz
     
     real(mytype)               :: xm,y_sampling,y_wmn,zm,r
+    
+    !real(mytype)               :: z_zero_wf
+    !integer                    :: s
     
     ! Reset wall flux/stresses values
     wallsgsx1 = zero
@@ -912,6 +1033,9 @@ contains
             !sampling at dsampling*dy from wall
             y_wmn=real(j-1,mytype)*dy
             y_sampling=yterrain(xm,zm)+delta-y_wmn
+            !s = nint(xm/dx+one+nx*zm/dz)
+            !z_zero_wf=roughsurf(s)
+            !write(*,*)  z_zero_wf
             if (y_sampling.ge.0) then
                j0=floor(y_sampling/dy)
                y_sampling=y_sampling-real(j0,mytype)*dy

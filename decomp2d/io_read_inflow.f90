@@ -27,7 +27,7 @@ end if
 ! Create file type and set file view
 sizes(1) = ntimesteps 
 sizes(2) = decomp%ysz(2)
-sizes(3) = decomp%zsz(3)
+sizes(3) = decomp%zsz(3)+2
 subsizes(1) = ntimesteps
 subsizes(2) = decomp%xsz(2)
 subsizes(3) = decomp%xsz(3)

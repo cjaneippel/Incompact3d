@@ -70,6 +70,8 @@ module var
   ! working arrays for ABL
   real(mytype), save, allocatable, dimension(:,:) :: heatflux
   real(mytype), save, allocatable, dimension(:,:,:) :: wmnode
+  real(mytype), save, allocatable, dimension(:) :: yfarmsurf
+  real(mytype), save, allocatable, dimension(:) :: roughsurf
   real(mytype), save, allocatable, dimension(:,:,:,:) :: abl_T
 
   ! arrays for turbine modelling
@@ -1316,6 +1318,10 @@ contains
     Tstat = zero
     allocate(wmnode(xsize(1),xsize(2),xsize(3)))
     wmnode=zero
+    allocate (yfarmsurf(nx*nz))
+    yfarmsurf=zero
+    allocate (roughsurf(nx*nz))
+    roughsurf=zero
     if (itype.eq.itype_abl.and.ibuoyancy.eq.1) then
        allocate(abl_T(xsize(1),xsize(2),xsize(3),numscalar))
        abl_T = zero
