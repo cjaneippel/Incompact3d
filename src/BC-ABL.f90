@@ -14,9 +14,10 @@ contains
   !*******************************************************************************
 
     USE decomp_2d
-    use param, only : two, pi, one, half
+    use param, only : two, pi, one, half, iibm
     use variables, only : nx, nz
-    use param, only : iterrain, hibm, hmax, rad, chx, chz, dx, dz, zlz, nclz1
+    use complex_geometry, only: nraf
+    use param, only : iterrain, hibm, hmax, rad, chx, chz, dx, dz, xlx, zlz, nclz1
     use dbg_schemes, only: sqrt_prec, sin_prec, cos_prec
     use MPI
 
@@ -26,11 +27,6 @@ contains
 
     real(mytype)               :: xm,zm,r, xtrans, ztransini, ztransend, yavez
     integer                    :: ierror,code,i, ix, iz
-
-    ! For debugging, print the matrix to ensure it's read correctly
-    !do i = 1, nx*nz
-    !    print *, (yfarmsurf(i))
-    !end do
 
     if (iterrain==1) then
        !Flat terrain
@@ -52,10 +48,16 @@ contains
           yterrain=hibm
        endif
     elseif (iterrain==4) then
-       !i = nint(xm/dx+one+nx*zm/dz)
-       ix = nint(xm / dx)    ! X index
-       iz = nint(zm / dz)    ! Z index
-       i = ix + 1+ iz*nx  ! Combine into 1D index
+       if (iibm==1) then
+           ix = 1+nint(xm / dx)    ! X index
+           iz = 1+nint(zm / dz)    ! Z index
+           i = ix + (iz-1)*nx
+       elseif (iibm==2) then
+           ! Calculate indices for generalized grid spacing
+           ix = 1 + nint(xm / (xlx/(nx*nraf-1)))    ! X index in terms of the finest grid
+           iz = 1 + nint(zm / (zlz/(nz*nraf-1)))    ! Z index in terms of the finest grid
+           i = ix + (iz - 1) * (nx * nraf - 1)
+       endif
        yterrain=yfarmsurf(i)
     elseif (iterrain==5) then
        !i = nint(xm/dx+one+nx*zm/dz)
@@ -63,7 +65,7 @@ contains
        iz = nint(zm / dz)    ! Z index
        i = ix + (iz - 1) * nx  ! Combine into 1D index
        yterrain=yfarmsurf(i)
-       !yterrain=roughsurf(i)*1000
+       !yterrain=roughsurf(i)
        xtrans = 1000
        yavez = 100
        ztransini = 500
@@ -93,7 +95,8 @@ contains
 
     USE decomp_2d
     use param, only : one, two, zero, pi, ten
-    use param, only : iterrain, hibm, hmax, rad, chx, chz, iibm
+    use param, only : iterrain, hibm, hmax, rad, chx, chz, iibm, xlx, zlz
+    use complex_geometry, only: nraf
     USE var, only : uvisu
     USE param, only: ioutput, itime
     use ibm_param
@@ -119,7 +122,7 @@ contains
     integer                    :: code, ierror
 
     integer :: s, n_rows
-    !real(mytype), dimension(nx*nz) :: yfarmsurf
+    real(mytype)               :: dxx,dzz
     real(mytype) :: discard1, discard2  ! Temporary variables to read and discard first two columns
 
     ! ADDED variables for hill collection
@@ -127,23 +130,58 @@ contains
     real(mytype)               :: x0, z0, h, L1, L2, yfarm
     real(mytype), allocatable  :: hill_collection(:,:)
 
+    ! Variables for handling inverse rotation
+    real(mytype) :: x_center, z_center   ! Rotation center
+    real(mytype) :: angle_rad            ! Rotation angle in RADIANS
+    real(mytype) :: x_t, z_t             ! Shifted coordinates
+    real(mytype) :: X_orig, Z_orig       ! Unrotated coordinates
+    
     if (iterrain==4) then
-       ! Allocate based on the number of hills, for example, 5 columns (x0, z0, h, L1, L2) and num_hills rows
-       num_hills = 12  ! You can adjust this based on the actual number of hills
+        ! Rotation center and angle setup
+        x_center = 2400.0_mytype
+        z_center = 1800.0_mytype
+        angle_rad = 30 * (pi / 180.0_mytype)   ! convert theta=30 degrees -> radians
+       ! Allocate based on the number of hills, 5 columns (x0, z0, h, L1, L2) and num_hills rows
+       num_hills = 12 
        allocate(hill_collection(num_hills, 5))
-       
-       ! Read the hill parameters from a file (use an appropriate file path)
+       ! Read the hill parameters from a file 
        open(unit=10, file='hill_collection.txt', status='old')
        do p = 1, num_hills
           read(10, *) hill_collection(p, :)  ! Read each row: x0, z0, h, L1, L2
        end do
        close(10)
 
-       n_rows = nx*nz  ! Replace with number of rows in df_new
+       if (iibm==1) then
+           n_rows = nx*nz  
+       elseif (iibm==2) then
+           n_rows = (nx*nraf-1)*(nz*nraf-1)  
+           dxx=xlx/(nx*nraf-1)
+           dzz=zlz/(nz*nraf-1)
+       endif
        ! Read the matrix values
        do s = 1, n_rows
-           xm = mod(s-1, nx)*dx
-           zm = floor(real(s-1) / real(nx)) * dz
+           if (iibm==1) then
+               xm = mod(s-1, nx)*dx
+               zm = floor(real(s-1) / real(nx)) * dz
+           elseif (iibm==2) then
+               xm = mod(s-1, nx*nraf-1)*dxx
+               zm = floor(real(s-1) / real(nx*nraf-1)) * dzz
+           endif
+           
+           ! "Unrotate" (x_m, z_m) back to original coords
+           ! Shift so (x_center, z_center) is origin
+           x_t = xm - x_center
+           z_t = zm - z_center
+    
+           ! We reuse angle_rad as +theta 
+           X_orig =  x_t*cos_prec(angle_rad) + z_t*sin_prec(angle_rad)
+           Z_orig = -x_t*sin_prec(angle_rad) + z_t*cos_prec(angle_rad)
+    
+           ! Shift back
+           X_orig = X_orig + x_center
+           Z_orig = Z_orig + z_center
+    
+           ! Compute the hill height *in the original system*
            yfarm = hibm
            do i = 1, num_hills
               x0 = hill_collection(i, 1)  ! Center of the hill in x
@@ -151,12 +189,13 @@ contains
               h  = hill_collection(i, 3)  ! Height of the hill
               L1 = hill_collection(i, 4)  ! Horizontal size in x-direction
               L2 = hill_collection(i, 5)  ! Horizontal size in z-direction
-              ! Calculate the distance in the elliptical (x,z) plane
-              if (abs(xm - x0) <= L1 .and. abs(zm - z0) <= L2) then
-                 r = sqrt_prec((xm - x0)**two + (zm - z0)**two)
+              ! Use (X_orig, Z_orig) here!
+              if (abs(X_orig - x0) <= L1 .and. abs(Z_orig - z0) <= L2) then
+                 r = sqrt_prec((X_orig - x0)**two + (Z_orig - z0)**two)
                  if (r <= max(L1, L2)) then
-                    ! Apply the hill shape using cos² formula
-                    yfarm = yfarm + h * cos_prec(pi * (xm - x0) / (two * L1))**2 * cos_prec(pi * (zm - z0) / (two * L2))**2
+                    yfarm = yfarm + h * &
+                            cos_prec(pi * (X_orig - x0)/(two * L1))**2 * &
+                            cos_prec(pi * (Z_orig - z0)/(two * L2))**2
                  endif
               endif
            end do
@@ -193,12 +232,9 @@ contains
           ym=yp(j)
           do i=nxi,nxf
              xm=real(i-1,mytype)*dx
-             !r=abs(xm-chx)
-             !if (r.le.rad) then
                 if (ym-yterrain(xm,zm).le.zeromach) then
                    epsi(i,j,k)=remp
                 endif
-             !endif
           enddo
        enddo
     enddo
@@ -1554,7 +1590,6 @@ contains
 !      call transpose_z_to_y(tc3,tf2)
 !      call transpose_y_to_x(td2,tg1)
 !      call transpose_y_to_x(te2,th1)
-!      call transpose_y_to_x(tf2,ti1)
 !      call transpose_y_to_x(ta2,td1)
 !      call transpose_y_to_x(tb2,te1)
 !      call transpose_y_to_x(tc2,tf1)

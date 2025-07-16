@@ -1318,8 +1318,13 @@ contains
     Tstat = zero
     allocate(wmnode(xsize(1),xsize(2),xsize(3)))
     wmnode=zero
-    allocate (yfarmsurf(nx*nz))
-    yfarmsurf=zero
+    if (iibm==1) then
+        allocate (yfarmsurf(nx*nz))
+        yfarmsurf=zero
+    elseif (iibm==2) then
+        allocate (yfarmsurf((nx*nraf-1)*(nz*nraf-1)))
+        yfarmsurf=zero
+    endif
     allocate (roughsurf(nx*nz))
     roughsurf=zero
     if (itype.eq.itype_abl.and.ibuoyancy.eq.1) then
